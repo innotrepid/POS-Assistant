@@ -75,17 +75,13 @@ class SalesService {
     );
 
     if (discount > subtotal) {
-      throw ArgumentError(
-        'Sale discount cannot exceed the subtotal.',
-      );
+      throw ArgumentError('Sale discount cannot exceed the subtotal.');
     }
 
     final total = subtotal - discount;
 
     if (paidAmount > total) {
-      throw ArgumentError(
-        'Paid amount cannot exceed the sale total.',
-      );
+      throw ArgumentError('Paid amount cannot exceed the sale total.');
     }
 
     final balance = total - paidAmount;
@@ -104,7 +100,6 @@ class SalesService {
 
     await db.transaction((txn) async {
       // Validate all stock before writing anything.
-      //
       // Because this happens inside the same transaction as the writes,
       // a failed stock check rolls back the entire sale.
       for (final item in items) {
