@@ -5,3 +5,9 @@ linter:
     prefer_const_constructors: true
     prefer_const_literals_to_create_immutables: true
     avoid_print: false
+
+analyzer:
+  errors:
+    # Temporary while we build the foundation
+    todo: ignore
+    deprecated_member_use_from_same_package: ignore
