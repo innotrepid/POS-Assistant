@@ -5,7 +5,11 @@
 /// later switch to integer cents without rewriting the whole app.
 class Money {
   /// Format a double amount for display (e.g. 1250.5 → "KSh 1,250.50")
-  static String format(double amount, {String symbol = 'KSh', int decimals = 2}) {
+  static String format(
+    double amount, {
+    String symbol = 'KSh',
+    int decimals = 2,
+  }) {
     final fixed = amount.toStringAsFixed(decimals);
     final parts = fixed.split('.');
     final whole = parts[0].replaceAllMapped(
@@ -18,9 +22,7 @@ class Money {
 
   /// Safe parse from user input ("1,250.50", "1250", "KSh 1250.5" etc.)
   static double parse(String input) {
-    final cleaned = input
-        .replaceAll(RegExp(r'[^\d.]'), '')
-        .trim();
+    final cleaned = input.replaceAll(RegExp(r'[^\d.]'), '').trim();
     if (cleaned.isEmpty) return 0;
     return double.tryParse(cleaned) ?? 0;
   }
