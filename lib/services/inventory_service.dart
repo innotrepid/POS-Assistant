@@ -56,7 +56,8 @@ class InventoryService {
       unit: unit,
       sellingPrice: Money.round(sellingPrice),
       costPrice: costPrice != null ? Money.round(costPrice) : null,
-      wholesalePrice: wholesalePrice != null ? Money.round(wholesalePrice) : null,
+      wholesalePrice:
+          wholesalePrice != null ? Money.round(wholesalePrice) : null,
       minimumStock: minimumStock,
       reorderQuantity: reorderQuantity,
       supplierId: supplierId,
@@ -109,7 +110,8 @@ class InventoryService {
     final q = '%${query.trim()}%';
     final maps = await db.query(
       'products',
-      where: 'active = 1 AND (name LIKE ? OR alternative_name LIKE ? OR barcode LIKE ? OR sku LIKE ?)',
+      where:
+          'active = 1 AND (name LIKE ? OR alternative_name LIKE ? OR barcode LIKE ? OR sku LIKE ?)',
       whereArgs: [q, q, q, q],
       orderBy: 'name ASC',
     );
@@ -317,7 +319,8 @@ class InventoryService {
       ''',
       [productId],
     );
-    final currentStock = (stockResult.first['stock'] as num?)?.toDouble() ?? 0;
+    final currentStock =
+        (stockResult.first['stock'] as num?)?.toDouble() ?? 0;
 
     // Current average cost
     final productResult = await txn.query(
@@ -337,7 +340,8 @@ class InventoryService {
     if (currentStock <= 0) {
       newAvg = purchaseUnitCost;
     } else {
-      final totalValue = (currentStock * currentAvg) + (incomingQuantity * purchaseUnitCost);
+      final totalValue =
+          (currentStock * currentAvg) + (incomingQuantity * purchaseUnitCost);
       final totalQty = currentStock + incomingQuantity;
       newAvg = totalValue / totalQty;
     }
