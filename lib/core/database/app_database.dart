@@ -23,7 +23,7 @@ class AppDatabase {
 
     return openDatabase(
       path,
-      version: 1,
+      version: 2, // bumped because we added columns
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -71,6 +71,8 @@ class AppDatabase {
         image_path TEXT,
         notes TEXT,
         active INTEGER NOT NULL DEFAULT 1,
+        track_batches INTEGER NOT NULL DEFAULT 0,
+        has_expiry INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -259,33 +261,14 @@ class AppDatabase {
       )
     ''');
 
-    await db.execute(
-      'CREATE INDEX idx_products_barcode ON products(barcode)',
-    );
-
-    await db.execute(
-      'CREATE INDEX idx_products_category ON products(category_id)',
-    );
-
-    await db.execute(
-      'CREATE INDEX idx_stock_product ON stock_movements(product_id)',
-    );
-
-    await db.execute(
-      'CREATE INDEX idx_sales_customer ON sales(customer_id)',
-    );
-
-    await db.execute(
-      'CREATE INDEX idx_sales_created ON sales(created_at)',
-    );
-
-    await db.execute(
-      'CREATE INDEX idx_debtors_customer ON debtor_transactions(customer_id)',
-    );
-
-    await db.execute(
-      'CREATE INDEX idx_creditors_supplier ON creditor_transactions(supplier_id)',
-    );
+    // Indexes
+    await db.execute('CREATE INDEX idx_products_barcode ON products(barcode)');
+    await db.execute('CREATE INDEX idx_products_category ON products(category_id)');
+    await db.execute('CREATE INDEX idx_stock_product ON stock_movements(product_id)');
+    await db.execute('CREATE INDEX idx_sales_customer ON sales(customer_id)');
+    await db.execute('CREATE INDEX idx_sales_created ON sales(created_at)');
+    await db.execute('CREATE INDEX idx_debtors_customer ON debtor_transactions(customer_id)');
+    await db.execute('CREATE INDEX idx_creditors_supplier ON creditor_transactions(supplier_id)');
   }
 
   Future<void> _upgradeDatabase(
@@ -293,12 +276,19 @@ class AppDatabase {
     int oldVersion,
     int newVersion,
   ) async {
-    // Future migrations will be added here.
+    if (oldVersion < 2) {
+      // Add the two new columns safely
+      await db.execute(
+        'ALTER TABLE products ADD COLUMN track_batches INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE products ADD COLUMN has_expiry INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   Future<void> close() async {
     final db = _database;
-
     if (db != null) {
       await db.close();
       _database = null;
