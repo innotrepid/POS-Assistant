@@ -8,7 +8,7 @@ class Product {
   final String? brand;
   final String unit;
   final double sellingPrice;
-  final double? costPrice;          // Current Weighted Average Cost
+  final double? costPrice; // Current Weighted Average Cost
   final double? wholesalePrice;
   final double minimumStock;
   final double reorderQuantity;
