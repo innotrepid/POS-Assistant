@@ -112,8 +112,7 @@ class SalesService {
           [item.productId],
         );
 
-        final currentStock =
-            (result.first['stock'] as num?)?.toDouble() ?? 0;
+        final currentStock = (result.first['stock'] as num?)?.toDouble() ?? 0;
 
         if (currentStock < item.quantity) {
           throw StateError(
