@@ -8,8 +8,8 @@ class InventoryService {
   InventoryService({
     AppDatabase? database,
     Uuid? uuid,
-  })  : _database = database ?? AppDatabase.instance,
-        _uuid = uuid ?? const Uuid();
+  }) : _database = database ?? AppDatabase.instance,
+       _uuid = uuid ?? const Uuid();
 
   final AppDatabase _database;
   final Uuid _uuid;
@@ -110,8 +110,8 @@ class InventoryService {
     final q = '%${query.trim()}%';
     final maps = await db.query(
       'products',
-      where:
-          'active = 1 AND (name LIKE ? OR alternative_name LIKE ? OR barcode LIKE ? OR sku LIKE ?)',
+      where: 'active = 1 AND '
+          '(name LIKE ? OR alternative_name LIKE ? OR barcode LIKE ? OR sku LIKE ?)',
       whereArgs: [q, q, q, q],
       orderBy: 'name ASC',
     );

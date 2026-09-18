@@ -6,8 +6,8 @@ class SalesService {
   SalesService({
     AppDatabase? database,
     Uuid? uuid,
-  })  : _database = database ?? AppDatabase.instance,
-        _uuid = uuid ?? const Uuid();
+  }) : _database = database ?? AppDatabase.instance,
+       _uuid = uuid ?? const Uuid();
 
   final AppDatabase _database;
   final Uuid _uuid;
