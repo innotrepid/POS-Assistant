@@ -29,10 +29,7 @@ class AppDatabase {
     );
   }
 
-  Future<void> _createDatabase(
-    Database db,
-    int version,
-  ) async {
+  Future<void> _createDatabase(Database db, int version) async {
     await db.execute('''
       CREATE TABLE businesses (
         id TEXT PRIMARY KEY,
@@ -263,12 +260,20 @@ class AppDatabase {
 
     // Indexes
     await db.execute('CREATE INDEX idx_products_barcode ON products(barcode)');
-    await db.execute('CREATE INDEX idx_products_category ON products(category_id)');
-    await db.execute('CREATE INDEX idx_stock_product ON stock_movements(product_id)');
+    await db.execute(
+      'CREATE INDEX idx_products_category ON products(category_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_stock_product ON stock_movements(product_id)',
+    );
     await db.execute('CREATE INDEX idx_sales_customer ON sales(customer_id)');
     await db.execute('CREATE INDEX idx_sales_created ON sales(created_at)');
-    await db.execute('CREATE INDEX idx_debtors_customer ON debtor_transactions(customer_id)');
-    await db.execute('CREATE INDEX idx_creditors_supplier ON creditor_transactions(supplier_id)');
+    await db.execute(
+      'CREATE INDEX idx_debtors_customer ON debtor_transactions(customer_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_creditors_supplier ON creditor_transactions(supplier_id)',
+    );
   }
 
   Future<void> _upgradeDatabase(
@@ -295,9 +300,7 @@ class AppDatabase {
     }
   }
 
-  Future<void> transaction(
-    Future<void> Function(Transaction txn) action,
-  ) async {
+  Future<void> transaction(Future<void> Function(Transaction txn) action) async {
     final db = await database;
     await db.transaction(action);
   }
