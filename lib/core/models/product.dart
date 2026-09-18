@@ -8,7 +8,7 @@ class Product {
   final String? brand;
   final String unit;
   final double sellingPrice;
-  final double? costPrice;
+  final double? costPrice;          // Current Weighted Average Cost
   final double? wholesalePrice;
   final double minimumStock;
   final double reorderQuantity;
@@ -16,6 +16,8 @@ class Product {
   final String? imagePath;
   final String? notes;
   final bool active;
+  final bool trackBatches;
+  final bool hasExpiry;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -37,6 +39,8 @@ class Product {
     this.imagePath,
     this.notes,
     this.active = true,
+    this.trackBatches = false,
+    this.hasExpiry = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -60,6 +64,8 @@ class Product {
       'image_path': imagePath,
       'notes': notes,
       'active': active ? 1 : 0,
+      'track_batches': trackBatches ? 1 : 0,
+      'has_expiry': hasExpiry ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -75,17 +81,65 @@ class Product {
       categoryId: map['category_id'] as String?,
       brand: map['brand'] as String?,
       unit: map['unit'] as String? ?? 'piece',
-      sellingPrice: (map['selling_price'] as num).toDouble(),
+      sellingPrice: (map['selling_price'] as num?)?.toDouble() ?? 0,
       costPrice: (map['cost_price'] as num?)?.toDouble(),
       wholesalePrice: (map['wholesale_price'] as num?)?.toDouble(),
-      minimumStock: (map['minimum_stock'] as num).toDouble(),
-      reorderQuantity: (map['reorder_quantity'] as num).toDouble(),
+      minimumStock: (map['minimum_stock'] as num?)?.toDouble() ?? 0,
+      reorderQuantity: (map['reorder_quantity'] as num?)?.toDouble() ?? 0,
       supplierId: map['supplier_id'] as String?,
       imagePath: map['image_path'] as String?,
       notes: map['notes'] as String?,
-      active: (map['active'] as int) == 1,
+      active: (map['active'] as int?) == 1,
+      trackBatches: (map['track_batches'] as int?) == 1,
+      hasExpiry: (map['has_expiry'] as int?) == 1,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
+    );
+  }
+
+  Product copyWith({
+    String? name,
+    String? alternativeName,
+    String? sku,
+    String? barcode,
+    String? categoryId,
+    String? brand,
+    String? unit,
+    double? sellingPrice,
+    double? costPrice,
+    double? wholesalePrice,
+    double? minimumStock,
+    double? reorderQuantity,
+    String? supplierId,
+    String? imagePath,
+    String? notes,
+    bool? active,
+    bool? trackBatches,
+    bool? hasExpiry,
+    DateTime? updatedAt,
+  }) {
+    return Product(
+      id: id,
+      name: name ?? this.name,
+      alternativeName: alternativeName ?? this.alternativeName,
+      sku: sku ?? this.sku,
+      barcode: barcode ?? this.barcode,
+      categoryId: categoryId ?? this.categoryId,
+      brand: brand ?? this.brand,
+      unit: unit ?? this.unit,
+      sellingPrice: sellingPrice ?? this.sellingPrice,
+      costPrice: costPrice ?? this.costPrice,
+      wholesalePrice: wholesalePrice ?? this.wholesalePrice,
+      minimumStock: minimumStock ?? this.minimumStock,
+      reorderQuantity: reorderQuantity ?? this.reorderQuantity,
+      supplierId: supplierId ?? this.supplierId,
+      imagePath: imagePath ?? this.imagePath,
+      notes: notes ?? this.notes,
+      active: active ?? this.active,
+      trackBatches: trackBatches ?? this.trackBatches,
+      hasExpiry: hasExpiry ?? this.hasExpiry,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }
