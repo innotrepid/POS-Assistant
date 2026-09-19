@@ -1,6 +1,16 @@
 import 'package:uuid/uuid.dart';
 
 import '../core/database/app_database.dart';
+import '../core/utils/money.dart';
+
+/// Allowed payment types for foundation POS.
+const Set<String> kAllowedPaymentTypes = {
+  'cash',
+  'mpesa',
+  'card',
+  'credit',
+  'split',
+};
 
 class SalesService {
   SalesService({
@@ -12,15 +22,38 @@ class SalesService {
   final AppDatabase _database;
   final Uuid _uuid;
 
+  /// Creates a completed sale inside a single DB transaction.
+  ///
+  /// Updates:
+  /// - sales + sale_items
+  /// - stock_movements (negative qty)
+  /// - payments (if paidAmount > 0)
+  /// - debtor_transactions (if balance > 0)
+  /// - audit_logs
+  ///
+  /// Throws [ArgumentError] for invalid input.
+  /// Throws [StateError] for insufficient stock.
   Future<String> createSale({
     String? customerId,
     required List<SaleLineInput> items,
     required double paidAmount,
     double discount = 0,
     String paymentType = 'cash',
+    String? paymentReference,
   }) async {
     if (items.isEmpty) {
       throw ArgumentError('A sale must contain at least one item.');
+    }
+
+    final normalizedPaymentType = paymentType.trim().toLowerCase();
+    if (normalizedPaymentType.isEmpty) {
+      throw ArgumentError('Payment type is required.');
+    }
+    if (!kAllowedPaymentTypes.contains(normalizedPaymentType)) {
+      throw ArgumentError(
+        'Unsupported payment type "$paymentType". '
+        'Allowed: ${kAllowedPaymentTypes.join(', ')}.',
+      );
     }
 
     if (discount < 0) {
@@ -29,10 +62,6 @@ class SalesService {
 
     if (paidAmount < 0) {
       throw ArgumentError('Paid amount cannot be negative.');
-    }
-
-    if (paymentType.trim().isEmpty) {
-      throw ArgumentError('Payment type is required.');
     }
 
     for (final item in items) {
@@ -62,35 +91,43 @@ class SalesService {
         );
       }
 
-      if (item.discount > item.quantity * item.unitPrice) {
+      final lineGross = Money.round(item.quantity * item.unitPrice);
+      if (item.discount > lineGross) {
         throw ArgumentError(
           'Discount for ${item.productName} cannot exceed the line value.',
         );
       }
     }
 
-    final subtotal = items.fold<double>(
-      0,
-      (sum, item) => sum + item.total,
+    final subtotal = Money.round(
+      items.fold<double>(0, (sum, item) => sum + item.total),
     );
+    final saleDiscount = Money.round(discount);
 
-    if (discount > subtotal) {
+    if (saleDiscount > subtotal) {
       throw ArgumentError('Sale discount cannot exceed the subtotal.');
     }
 
-    final total = subtotal - discount;
+    final total = Money.round(subtotal - saleDiscount);
+    final paid = Money.round(paidAmount);
 
-    if (paidAmount > total) {
+    if (paid > total) {
       throw ArgumentError('Paid amount cannot exceed the sale total.');
     }
 
-    final balance = total - paidAmount;
+    final balance = Money.round(total - paid);
 
     // A credit balance must belong to a customer.
-    if (balance > 0 && customerId == null) {
+    if (balance > 0 && (customerId == null || customerId.trim().isEmpty)) {
       throw ArgumentError(
         'A customer is required when a sale has an outstanding balance.',
       );
+    }
+
+    // Full credit sale should use payment type credit when nothing is paid.
+    if (balance > 0 && paid == 0 && normalizedPaymentType == 'cash') {
+      // Allow but treat status as unpaid; payment type still recorded as cash
+      // only if they paid something. When paid is 0 we skip payment row.
     }
 
     final saleId = _uuid.v4();
@@ -100,8 +137,6 @@ class SalesService {
 
     await db.transaction((txn) async {
       // Validate all stock before writing anything.
-      // Because this happens inside the same transaction as the writes,
-      // a failed stock check rolls back the entire sale.
       for (final item in items) {
         final result = await txn.rawQuery(
           '''
@@ -127,30 +162,32 @@ class SalesService {
         'id': saleId,
         'customer_id': customerId,
         'subtotal': subtotal,
-        'discount': discount,
+        'discount': saleDiscount,
         'total': total,
-        'paid_amount': paidAmount,
+        'paid_amount': paid,
         'balance': balance,
-        'payment_status': _paymentStatus(
-          total: total,
-          paidAmount: paidAmount,
-          balance: balance,
-        ),
+        'payment_status': _paymentStatus(paid: paid, balance: balance),
         'sale_status': 'completed',
         'created_at': now,
       });
 
       for (final item in items) {
+        final lineTotal = Money.round(item.total);
+        final lineDiscount = Money.round(item.discount);
+        final unitPrice = Money.round(item.unitPrice);
+        final unitCost =
+            item.unitCost != null ? Money.round(item.unitCost!) : null;
+
         await txn.insert('sale_items', {
           'id': _uuid.v4(),
           'sale_id': saleId,
           'product_id': item.productId,
           'product_name': item.productName,
           'quantity': item.quantity,
-          'unit_price': item.unitPrice,
-          'unit_cost': item.unitCost,
-          'discount': item.discount,
-          'total': item.total,
+          'unit_price': unitPrice,
+          'unit_cost': unitCost,
+          'discount': lineDiscount,
+          'total': lineTotal,
         });
 
         await txn.insert('stock_movements', {
@@ -158,20 +195,21 @@ class SalesService {
           'product_id': item.productId,
           'movement_type': 'sale',
           'quantity': -item.quantity,
-          'unit_cost': item.unitCost,
+          'unit_cost': unitCost,
           'reference_id': saleId,
           'reason': 'Sale completed',
           'created_at': now,
         });
       }
 
-      if (paidAmount > 0) {
+      if (paid > 0) {
         await txn.insert('payments', {
           'id': _uuid.v4(),
           'sale_id': saleId,
           'customer_id': customerId,
-          'payment_type': paymentType,
-          'amount': paidAmount,
+          'payment_type': normalizedPaymentType,
+          'amount': paid,
+          'reference': paymentReference?.trim(),
           'created_at': now,
         });
       }
@@ -192,7 +230,9 @@ class SalesService {
         'action': 'sale_created',
         'entity_type': 'sale',
         'entity_id': saleId,
-        'new_value': 'total=$total, paid=$paidAmount, balance=$balance',
+        'new_value':
+            'total=$total, paid=$paid, balance=$balance, '
+            'payment_type=$normalizedPaymentType',
         'reason': 'Sale completed',
         'created_at': now,
       });
@@ -201,19 +241,58 @@ class SalesService {
     return saleId;
   }
 
+  Future<Map<String, dynamic>?> getSale(String saleId) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'sales',
+      where: 'id = ?',
+      whereArgs: [saleId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<List<Map<String, dynamic>>> getSaleItems(String saleId) async {
+    final db = await _database.database;
+    return db.query(
+      'sale_items',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listSales({
+    int limit = 50,
+    String? customerId,
+  }) async {
+    final db = await _database.database;
+    if (customerId != null) {
+      return db.query(
+        'sales',
+        where: 'customer_id = ?',
+        whereArgs: [customerId],
+        orderBy: 'created_at DESC',
+        limit: limit,
+      );
+    }
+    return db.query(
+      'sales',
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+  }
+
   String _paymentStatus({
-    required double total,
-    required double paidAmount,
+    required double paid,
     required double balance,
   }) {
     if (balance == 0) {
       return 'paid';
     }
-
-    if (paidAmount > 0) {
+    if (paid > 0) {
       return 'partially_paid';
     }
-
     return 'unpaid';
   }
 
@@ -221,7 +300,6 @@ class SalesService {
     if (value == value.truncateToDouble()) {
       return value.toInt().toString();
     }
-
     return value.toString();
   }
 }
@@ -244,6 +322,6 @@ class SaleLineInput {
   });
 
   double get total {
-    return (quantity * unitPrice) - discount;
+    return Money.round((quantity * unitPrice) - discount);
   }
 }

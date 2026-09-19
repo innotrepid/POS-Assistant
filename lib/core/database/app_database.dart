@@ -6,7 +6,15 @@ class AppDatabase {
 
   static final AppDatabase instance = AppDatabase._();
 
+  /// Factory for tests: opens an in-memory database with the real schema.
+  factory AppDatabase.memory() {
+    final db = AppDatabase._();
+    db._useMemory = true;
+    return db;
+  }
+
   Database? _database;
+  bool _useMemory = false;
 
   Future<Database> get database async {
     if (_database != null) {
@@ -18,6 +26,15 @@ class AppDatabase {
   }
 
   Future<Database> _openDatabase() async {
+    if (_useMemory) {
+      return openDatabase(
+        inMemoryDatabasePath,
+        version: 2,
+        onCreate: _createDatabase,
+        onUpgrade: _upgradeDatabase,
+      );
+    }
+
     final databasesPath = await getDatabasesPath();
     final path = join(databasesPath, 'pos_assistant.db');
 
@@ -300,7 +317,9 @@ class AppDatabase {
     }
   }
 
-  Future<void> transaction(Future<void> Function(Transaction txn) action) async {
+  Future<void> transaction(
+    Future<void> Function(Transaction txn) action,
+  ) async {
     final db = await database;
     await db.transaction(action);
   }
