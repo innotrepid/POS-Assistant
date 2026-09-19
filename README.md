@@ -1,29 +1,19 @@
-# POS-Assistant
+# Mercate
 
-Offline-first business companion for small shops.
+Offline-first business POS for small shops.
 
-## Security
+- **Package:** `com.aetherion.mercate`
+- **App name:** Mercate
 
-**Home → gear (Settings & security)**
+## Build APK (manual)
 
-1. **Set PIN** (4+ digits)  
-2. Turn on **Require unlock**  
-3. Optional: **Prefer biometrics** (fingerprint / face)
+1. GitHub → **Actions** → **Build APK**
+2. **Run workflow**
+3. Choose **release** or **debug**
+4. Download artifact **mercate-apk**
 
-When lock is on:
-- App opens to **lock screen** (biometric or PIN)
-- **Close day** and **Shop profile** ask for identity again
+Also runs on pushes that change `lib/`, `pubspec.yaml`, or this workflow.
 
-PIN is stored as SHA-256 hash in local settings (not plain text).
+## Branding
 
-## Safety rules (wave 1)
-
-- M-Pesa/bank need reference  
-- No accidental credit without choosing Credit  
-- Cash change calculation  
-- Discount / below-cost / debt warnings  
-- Notifications bell (in-app)  
-
-## Install
-
-**Actions → Build APK** → install artifact.
+Place the official logo at `assets/images/mercate_logo.png` (square PNG). The Home app bar and lock screen load it when present.
