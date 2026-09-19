@@ -24,15 +24,8 @@ class SalesService {
 
   /// Creates a completed sale inside a single DB transaction.
   ///
-  /// Updates:
-  /// - sales + sale_items
-  /// - stock_movements (negative qty)
-  /// - payments (if paidAmount > 0)
-  /// - debtor_transactions (if balance > 0)
-  /// - audit_logs
-  ///
-  /// Throws [ArgumentError] for invalid input.
-  /// Throws [StateError] for insufficient stock.
+  /// Catalogue items (with [SaleLineInput.productId]) deduct stock.
+  /// Quick-sale items (no product id) do **not** touch inventory.
   Future<String> createSale({
     String? customerId,
     required List<SaleLineInput> items,
@@ -65,8 +58,9 @@ class SalesService {
     }
 
     for (final item in items) {
-      if (item.productId.trim().isEmpty) {
-        throw ArgumentError('Every sale item must have a product ID.');
+      if (!item.isQuickSale &&
+          (item.productId == null || item.productId!.trim().isEmpty)) {
+        throw ArgumentError('Catalogue items must have a product ID.');
       }
 
       if (item.productName.trim().isEmpty) {
@@ -117,17 +111,10 @@ class SalesService {
 
     final balance = Money.round(total - paid);
 
-    // A credit balance must belong to a customer.
     if (balance > 0 && (customerId == null || customerId.trim().isEmpty)) {
       throw ArgumentError(
         'A customer is required when a sale has an outstanding balance.',
       );
-    }
-
-    // Full credit sale should use payment type credit when nothing is paid.
-    if (balance > 0 && paid == 0 && normalizedPaymentType == 'cash') {
-      // Allow but treat status as unpaid; payment type still recorded as cash
-      // only if they paid something. When paid is 0 we skip payment row.
     }
 
     final saleId = _uuid.v4();
@@ -136,8 +123,10 @@ class SalesService {
     final db = await _database.database;
 
     await db.transaction((txn) async {
-      // Validate all stock before writing anything.
+      // Stock checks only for catalogue products.
       for (final item in items) {
+        if (item.isQuickSale) continue;
+
         final result = await txn.rawQuery(
           '''
           SELECT COALESCE(SUM(quantity), 0) AS stock
@@ -181,8 +170,10 @@ class SalesService {
         await txn.insert('sale_items', {
           'id': _uuid.v4(),
           'sale_id': saleId,
-          'product_id': item.productId,
-          'product_name': item.productName,
+          'product_id': item.isQuickSale ? null : item.productId,
+          'product_name': item.isQuickSale
+              ? '${item.productName} (quick sale)'
+              : item.productName,
           'quantity': item.quantity,
           'unit_price': unitPrice,
           'unit_cost': unitCost,
@@ -190,16 +181,18 @@ class SalesService {
           'total': lineTotal,
         });
 
-        await txn.insert('stock_movements', {
-          'id': _uuid.v4(),
-          'product_id': item.productId,
-          'movement_type': 'sale',
-          'quantity': -item.quantity,
-          'unit_cost': unitCost,
-          'reference_id': saleId,
-          'reason': 'Sale completed',
-          'created_at': now,
-        });
+        if (!item.isQuickSale) {
+          await txn.insert('stock_movements', {
+            'id': _uuid.v4(),
+            'product_id': item.productId,
+            'movement_type': 'sale',
+            'quantity': -item.quantity,
+            'unit_cost': unitCost,
+            'reference_id': saleId,
+            'reason': 'Sale completed',
+            'created_at': now,
+          });
+        }
       }
 
       if (paid > 0) {
@@ -305,20 +298,23 @@ class SalesService {
 }
 
 class SaleLineInput {
-  final String productId;
+  /// Null for quick-sale (non-catalogue) lines — no stock impact.
+  final String? productId;
   final String productName;
   final double quantity;
   final double unitPrice;
   final double? unitCost;
   final double discount;
+  final bool isQuickSale;
 
   const SaleLineInput({
-    required this.productId,
+    this.productId,
     required this.productName,
     required this.quantity,
     required this.unitPrice,
     this.unitCost,
     this.discount = 0,
+    this.isQuickSale = false,
   });
 
   double get total {

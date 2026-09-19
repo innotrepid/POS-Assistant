@@ -22,37 +22,47 @@ class CartController extends ChangeNotifier {
   bool get isEmpty => _lines.isEmpty;
 
   void addProduct(Product product, {double quantity = 1}) {
-    final index = _lines.indexWhere((l) => l.product.id == product.id);
+    final key = product.id;
+    final index = _lines.indexWhere((l) => !l.isQuickSale && l.lineKey == key);
     if (index >= 0) {
       final existing = _lines[index];
       _lines[index] = existing.copyWith(
         quantity: existing.quantity + quantity,
       );
     } else {
-      _lines.add(
-        CartLine(
-          product: product,
-          quantity: quantity,
-          unitPrice: product.sellingPrice,
-        ),
-      );
+      _lines.add(CartLine.fromProduct(product, quantity: quantity));
     }
     notifyListeners();
   }
 
-  void setQuantity(String productId, double quantity) {
+  void addQuickSale({
+    required String name,
+    required double unitPrice,
+    double quantity = 1,
+  }) {
+    _lines.add(
+      CartLine.quickSale(
+        name: name,
+        unitPrice: unitPrice,
+        quantity: quantity,
+      ),
+    );
+    notifyListeners();
+  }
+
+  void setQuantity(String lineKey, double quantity) {
     if (quantity <= 0) {
-      removeProduct(productId);
+      removeLine(lineKey);
       return;
     }
-    final index = _lines.indexWhere((l) => l.product.id == productId);
+    final index = _lines.indexWhere((l) => l.lineKey == lineKey);
     if (index < 0) return;
     _lines[index] = _lines[index].copyWith(quantity: quantity);
     notifyListeners();
   }
 
-  void removeProduct(String productId) {
-    _lines.removeWhere((l) => l.product.id == productId);
+  void removeLine(String lineKey) {
+    _lines.removeWhere((l) => l.lineKey == lineKey);
     notifyListeners();
   }
 
