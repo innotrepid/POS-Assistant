@@ -53,7 +53,7 @@ jobs:
         run: |
           flutter create . --project-name mercate --org com.aetherion --platforms=android
 
-      - name: Set applicationId, label, logo
+      - name: Set applicationId, label, logo, launcher icons
         run: |
           for f in android/app/build.gradle android/app/build.gradle.kts; do
             if [ -f "$f" ]; then
@@ -71,16 +71,36 @@ jobs:
           fi
           mkdir -p assets/images
           if [ -f assets/images/mercate_logo.b64 ]; then
-            base64 -d assets/images/mercate_logo.b64 > assets/images/mercate_logo.png
-            echo "Decoded mercate_logo.png from b64"
-          elif [ -d assets/images/logo_parts ]; then
-            cat assets/images/logo_parts/*.b64 | base64 -d > assets/images/mercate_logo.png || true
+            base64 -d assets/images/mercate_logo.b64 > assets/images/mercate_logo.png || true
           fi
-          if [ ! -f assets/images/mercate_logo.png ] || [ ! -s assets/images/mercate_logo.png ]; then
-            printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' | base64 -d > assets/images/mercate_logo.png
-            echo "Used placeholder logo"
+          LOGO="assets/images/mercate_logo.png"
+          if [ -f "$LOGO" ] && [ -s "$LOGO" ]; then
+            echo "Generating launcher icons from $LOGO"
+            pip install pillow -q
+            python3 << 'PY'
+from pathlib import Path
+from PIL import Image
+logo = Path("assets/images/mercate_logo.png")
+img = Image.open(logo).convert("RGBA")
+sizes = {
+    "mipmap-mdpi": 48,
+    "mipmap-hdpi": 72,
+    "mipmap-xhdpi": 96,
+    "mipmap-xxhdpi": 144,
+    "mipmap-xxxhdpi": 192,
+}
+for folder, size in sizes.items():
+    out_dir = Path("android/app/src/main/res") / folder
+    out_dir.mkdir(parents=True, exist_ok=True)
+    resized = img.resize((size, size), Image.Resampling.LANCZOS)
+    resized.save(out_dir / "ic_launcher.png")
+    resized.save(out_dir / "ic_launcher_round.png")
+print("Launcher icons written")
+PY
+          else
+            echo "No logo found for launcher icons"
           fi
-          ls -la assets/images/
+          ls -la assets/images/ || true
 
       - name: Get dependencies
         run: flutter pub get

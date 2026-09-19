@@ -15,7 +15,7 @@ class AppDatabase {
   Database? _database;
   bool _useMemory = false;
 
-  static const int schemaVersion = 4;
+  static const int schemaVersion = 5;
 
   Future<Database> get database async {
     if (_database != null) {
@@ -146,7 +146,8 @@ class AppDatabase {
         unit_price REAL NOT NULL,
         unit_cost REAL,
         discount REAL NOT NULL DEFAULT 0,
-        total REAL NOT NULL
+        total REAL NOT NULL,
+        refunded_quantity REAL NOT NULL DEFAULT 0
       )
     ''');
 
@@ -391,6 +392,13 @@ class AppDatabase {
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_payments_reference ON payments(reference)',
       );
+    }
+    if (oldVersion < 5) {
+      try {
+        await db.execute(
+          'ALTER TABLE sale_items ADD COLUMN refunded_quantity REAL NOT NULL DEFAULT 0',
+        );
+      } catch (_) {}
     }
   }
 
