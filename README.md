@@ -10,13 +10,11 @@ Offline-first **business companion** for small shops: sales (POS), inventory, de
 |-------|--------|
 | SQLite schema + services | Done |
 | Inventory + Sales (transactional) | Done |
-| Service tests | Done |
-| POS: search, cart, pay, receipt, history | Done |
-| Quick sale (no stock impact) | Done |
-| Customer picker + Customers tab | Done |
-| Inventory UI | Done |
-| **Release APK via GitHub Actions** | **Done** |
-| Debtors / creditors full module | Next |
+| POS engine + quick sale | Done |
+| Customers + picker | Done |
+| **Debtors** (balance, repay, statement) | **Done** |
+| APK via GitHub Actions | Done |
+| Creditors / purchases | Next |
 | Reports + PDF | Later |
 | Offline assistant | Later |
 
@@ -28,60 +26,27 @@ Offline-first **business companion** for small shops: sales (POS), inventory, de
 4. Unzip → copy `app-release.apk` to your phone.
 5. Install (allow “unknown sources” if prompted).
 
-The APK is built on every push to `foundation` that changes `lib/` or `pubspec.yaml`, and on manual dispatch.
+## Try debtors on device
 
-> First install: the APK is **unsigned debug-style release** for testing. Later we can add a signing key for Play Store.
+1. **POS** → sell on **credit** to a customer (creates debt).
+2. **Customers** → see “Owes …” on the list, or open the **wallet** icon for **Debtors**.
+3. Tap a customer → **statement** (credit sales + repayments).
+4. Tap **Repay** → cash / M-Pesa / card (cannot overpay).
+5. Balance and open sales update (FIFO against oldest unpaid sales).
 
-## Getting started (developers)
+## How to try POS
 
-```bash
-git clone https://github.com/innotrepid/POS-Assistant.git
-cd POS-Assistant
-git checkout foundation
-flutter create . --platforms=android   # once, if android/ is missing
-flutter pub get
-flutter run
-```
-
-```bash
-flutter analyze
-flutter test
-```
-
-## How to try POS on device
-
-1. **Stock** → **+** → add product + opening stock  
-2. **Customers** → **+** → add a customer (for credit sales)  
-3. **POS** → add catalogue items, or tap the **flash** icon for **quick sale**  
-4. **Pay** → cash / M-Pesa / card / credit → pick customer if needed  
-5. History icon → receipt  
-
-**Quick sale** never changes inventory (name is marked “(quick sale)” on the receipt).
-
-## Project structure
-
-```
-lib/
-├── core/database|models|utils
-├── services/   inventory · sales · customer
-├── features/
-│   ├── pos/        cart, checkout, picker, receipt, history
-│   ├── inventory/
-│   └── customers/
-└── main.dart
-```
-
-## CI
-
-| Workflow | Purpose |
-|----------|---------|
-| [ci.yml](.github/workflows/ci.yml) | analyze + test |
-| [build-apk.yml](.github/workflows/build-apk.yml) | release APK artifact |
+1. **Stock** → add product + opening stock  
+2. **Customers** → add a customer  
+3. **POS** → catalogue or **quick sale** (flash icon) → **Pay**  
+4. History → receipt  
 
 ## Roadmap
 
-1. ~~Foundation services + POS engine~~
-2. Debtors repayments + statements
+1. ~~Foundation + POS~~
+2. ~~Debtors~~
 3. Creditors / purchases
-4. Reports + PDF
-5. Offline assistant (rule-based)
+4. Expenses + daily closing
+5. Reports + PDF
+6. Offline assistant
+7. Business profiles (duka → mama mboga → …)
