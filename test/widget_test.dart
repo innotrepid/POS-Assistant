@@ -7,13 +7,9 @@ void main() {
     await tester.pumpWidget(const POSAssistantApp());
     await tester.pump();
 
-    // Bottom navigation should be present
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('POS'), findsOneWidget);
     expect(find.text('Stock'), findsOneWidget);
-
-    // First screen is Dashboard placeholder
-    expect(find.text('Dashboard'), findsOneWidget);
   });
 }

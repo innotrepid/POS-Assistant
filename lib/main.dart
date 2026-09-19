@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'core/database/app_database.dart';
 import 'features/customers/customers_page.dart';
+import 'features/dashboard/dashboard_page.dart';
 import 'features/inventory/inventory_page.dart';
 import 'features/pos/pos_page.dart';
 import 'features/suppliers/suppliers_page.dart';
@@ -49,10 +50,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      const _PlaceholderPage(
-        icon: Icons.dashboard_outlined,
-        title: 'Dashboard',
-      ),
+      const DashboardPage(),
       const PosPage(),
       const InventoryPage(),
       const CustomersPage(),

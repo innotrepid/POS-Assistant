@@ -6,7 +6,6 @@ class AppDatabase {
 
   static final AppDatabase instance = AppDatabase._();
 
-  /// Factory for tests: opens an in-memory database with the real schema.
   factory AppDatabase.memory() {
     final db = AppDatabase._();
     db._useMemory = true;
@@ -15,6 +14,8 @@ class AppDatabase {
 
   Database? _database;
   bool _useMemory = false;
+
+  static const int schemaVersion = 3;
 
   Future<Database> get database async {
     if (_database != null) {
@@ -29,7 +30,7 @@ class AppDatabase {
     if (_useMemory) {
       return openDatabase(
         inMemoryDatabasePath,
-        version: 2,
+        version: schemaVersion,
         onCreate: _createDatabase,
         onUpgrade: _upgradeDatabase,
       );
@@ -40,7 +41,7 @@ class AppDatabase {
 
     return openDatabase(
       path,
-      version: 2, // bumped because we added columns
+      version: schemaVersion,
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -245,6 +246,22 @@ class AppDatabase {
     ''');
 
     await db.execute('''
+      CREATE TABLE day_closings (
+        id TEXT PRIMARY KEY,
+        business_date TEXT NOT NULL UNIQUE,
+        opening_cash REAL NOT NULL DEFAULT 0,
+        counted_cash REAL NOT NULL DEFAULT 0,
+        counted_mpesa REAL NOT NULL DEFAULT 0,
+        expected_cash REAL NOT NULL DEFAULT 0,
+        expected_mpesa REAL NOT NULL DEFAULT 0,
+        sales_total REAL NOT NULL DEFAULT 0,
+        expenses_total REAL NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE audit_logs (
         id TEXT PRIMARY KEY,
         action TEXT NOT NULL,
@@ -275,7 +292,6 @@ class AppDatabase {
       )
     ''');
 
-    // Indexes
     await db.execute('CREATE INDEX idx_products_barcode ON products(barcode)');
     await db.execute(
       'CREATE INDEX idx_products_category ON products(category_id)',
@@ -291,6 +307,9 @@ class AppDatabase {
     await db.execute(
       'CREATE INDEX idx_creditors_supplier ON creditor_transactions(supplier_id)',
     );
+    await db.execute(
+      'CREATE INDEX idx_expenses_created ON expenses(created_at)',
+    );
   }
 
   Future<void> _upgradeDatabase(
@@ -299,12 +318,31 @@ class AppDatabase {
     int newVersion,
   ) async {
     if (oldVersion < 2) {
-      // Add the two new columns safely
       await db.execute(
         'ALTER TABLE products ADD COLUMN track_batches INTEGER NOT NULL DEFAULT 0',
       );
       await db.execute(
         'ALTER TABLE products ADD COLUMN has_expiry INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS day_closings (
+          id TEXT PRIMARY KEY,
+          business_date TEXT NOT NULL UNIQUE,
+          opening_cash REAL NOT NULL DEFAULT 0,
+          counted_cash REAL NOT NULL DEFAULT 0,
+          counted_mpesa REAL NOT NULL DEFAULT 0,
+          expected_cash REAL NOT NULL DEFAULT 0,
+          expected_mpesa REAL NOT NULL DEFAULT 0,
+          sales_total REAL NOT NULL DEFAULT 0,
+          expenses_total REAL NOT NULL DEFAULT 0,
+          notes TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_expenses_created ON expenses(created_at)',
       );
     }
   }

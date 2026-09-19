@@ -1,42 +1,46 @@
 # POS-Assistant
 
-Offline-first **business companion** for small shops.
+Offline-first business companion for small shops.
 
 ## Status (`foundation`)
 
 | Module | Status |
 |--------|--------|
 | POS + inventory + quick sale | Done |
-| Customers + debtors (repay / statement) | Done |
-| **Suppliers + purchases + creditors** | **Done** |
+| Customers + debtors | Done |
+| Suppliers + purchases + creditors | Done |
+| **Expenses + daily closing** | **Done** |
 | APK via GitHub Actions | Done |
-| Expenses + daily closing | Next |
-| Reports + PDF | Later |
+| Reports + PDF | Next |
 | Offline assistant | Later |
 | Business profiles | Later |
 
 ## Phone install
 
-**Actions → Build APK** → artifact `pos-assistant-apk` → install `app-release.apk`.
+**Actions → Build APK** → `pos-assistant-apk` → install `app-release.apk`.
 
-## Test creditors / purchases
+> Schema v3 adds `day_closings`. Fresh install is fine; existing installs upgrade on open.
 
-1. **Stock** → add products  
-2. **Suppliers** → **+** add supplier  
-3. Inbox icon **Receive goods** → supplier, lines (qty + unit cost), amount paid (0 = full credit)  
-4. Confirm → stock increases; if unpaid, supplier shows “We owe …”  
-5. Open supplier → **Pay** (partial/full)  
-6. Balance icon → **Creditors** list  
+## Test expenses + close day
 
-## Test debtors (existing)
+1. Make a few **POS** sales (cash / M-Pesa).  
+2. **Home** → **Expense** → category + amount.  
+3. Home shows today’s sales, cash/M-Pesa split, expenses.  
+4. **Close day** → opening cash, counted cash, counted M-Pesa.  
+5. Snackbar shows match or cash variance.  
 
-POS credit sale → Customers / Debtors → Repay.
+## Full test checklist (when ready)
+
+- [ ] Stock / products  
+- [ ] POS cash + quick sale + credit  
+- [ ] Debtors repay  
+- [ ] Receive goods + pay supplier  
+- [ ] Expense + close day  
 
 ## Roadmap
 
-1. ~~POS + debtors~~  
-2. ~~Creditors + purchases~~  
-3. Expenses + daily closing  
-4. Reports + PDF  
-5. Offline assistant  
-6. Business profiles (duka, mama mboga, …)  
+1. ~~POS, debtors, creditors~~  
+2. ~~Expenses + closing~~  
+3. Reports + PDF  
+4. Offline assistant  
+5. Business profiles  
