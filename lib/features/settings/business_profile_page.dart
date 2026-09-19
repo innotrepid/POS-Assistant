@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/business_profile.dart';
 import '../../services/business_profile_service.dart';
+import '../assistant/assistant_page.dart';
 
 class BusinessProfilePage extends StatefulWidget {
   const BusinessProfilePage({super.key});
@@ -79,12 +80,7 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
       setState(() => _current = profile);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${profile.label} · ${profile.interfaceLevel.name} interface. '
-            'New products default to ${profile.defaultUnit}.',
-          ),
-        ),
+        SnackBar(content: Text('Profile: ${profile.label}')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -94,45 +90,27 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
     }
   }
 
-  String _levelLabel(InterfaceLevel level) {
-    switch (level) {
-      case InterfaceLevel.simple:
-        return 'Simple';
-      case InterfaceLevel.simplePlus:
-        return 'Simple+';
-      case InterfaceLevel.operational:
-        return 'Operational';
-      case InterfaceLevel.operationalPlus:
-        return 'Operational+';
-      case InterfaceLevel.controlled:
-        return 'Controlled';
-      case InterfaceLevel.advanced:
-        return 'Advanced';
-      case InterfaceLevel.management:
-        return 'Management';
-      case InterfaceLevel.full:
-        return 'Full';
-    }
-  }
-
-  String _featureSummary(ProfileFeatures f) {
-    final parts = <String>[];
-    if (f.sales) parts.add('sales');
-    if (f.stock) parts.add('stock');
-    if (f.customers) parts.add('customers');
-    if (f.suppliers) parts.add('suppliers');
-    if (f.reports) parts.add('reports');
-    if (f.barcodes) parts.add('barcode');
-    if (f.batchesExpiry) parts.add('batch/expiry');
-    if (f.weightSales) parts.add('weight');
-    if (f.splitPayments) parts.add('split pay');
-    return parts.join(' · ');
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Shop profile')),
+      appBar: AppBar(
+        title: const Text('Shop profile'),
+        actions: [
+          IconButton(
+            tooltip: 'Ask assistant about profiles',
+            icon: const Icon(Icons.auto_awesome),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AssistantPage(
+                    initialQuestion: 'Explain business profiles',
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -155,36 +133,27 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
                         child: const Text('Save name'),
                       ),
                     ),
-                    const Divider(height: 32),
+                    const SizedBox(height: 16),
                     Text(
                       'Business type',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Profiles focus the interface — not a weaker app. '
-                      'The same sales, stock, and debt engine runs underneath.',
+                      'Tap a profile. Ask the assistant to explain the difference.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     for (final p in BusinessProfile.all)
-                      Card(
-                        child: ListTile(
-                          title: Text(p.label),
-                          subtitle: Text(
-                            '${_levelLabel(p.interfaceLevel)} · '
-                            '${_featureSummary(p.features)}\n'
-                            '${p.description}'
-                            '${p.enabled ? '' : '\n(Coming later)'}',
-                          ),
-                          isThreeLine: true,
-                          enabled: p.enabled,
-                          selected: _current?.id == p.id,
-                          trailing: _current?.id == p.id
-                              ? const Icon(Icons.check_circle)
-                              : null,
-                          onTap: p.enabled ? () => _select(p) : null,
-                        ),
+                      ListTile(
+                        title: Text(p.label),
+                        subtitle: p.enabled ? null : const Text('Coming later'),
+                        enabled: p.enabled,
+                        selected: _current?.id == p.id,
+                        trailing: _current?.id == p.id
+                            ? const Icon(Icons.check_circle)
+                            : null,
+                        onTap: p.enabled ? () => _select(p) : null,
                       ),
                   ],
                 ),

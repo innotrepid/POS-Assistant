@@ -10,7 +10,16 @@ import '../settings/business_profile_page.dart';
 import '../settings/security_settings_page.dart';
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  final int unreadCount;
+  final VoidCallback? onOpenNotifications;
+  final VoidCallback? onOpenAssistant;
+
+  const DashboardPage({
+    super.key,
+    this.unreadCount = 0,
+    this.onOpenNotifications,
+    this.onOpenAssistant,
+  });
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -298,10 +307,30 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_shopName),
+        title: Row(
+          children: [
+            Image.asset(
+              'assets/images/mercate_logo.png',
+              height: 28,
+              errorBuilder: (_, __, ___) => const Icon(Icons.store),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(_shopName, overflow: TextOverflow.ellipsis)),
+          ],
+        ),
         actions: [
+          if (widget.onOpenNotifications != null)
+            IconButton(
+              tooltip: 'Notifications',
+              onPressed: widget.onOpenNotifications,
+              icon: Badge(
+                isLabelVisible: widget.unreadCount > 0,
+                label: Text('${widget.unreadCount}'),
+                child: const Icon(Icons.notifications_outlined),
+              ),
+            ),
           IconButton(
-            tooltip: 'Settings & security',
+            tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),
             onPressed: () async {
               await Navigator.of(context).push(
@@ -317,7 +346,11 @@ class _DashboardPageState extends State<DashboardPage> {
             icon: const Icon(Icons.storefront_outlined),
             onPressed: _openProfile,
           ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: _load,
+          ),
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -336,13 +369,25 @@ class _DashboardPageState extends State<DashboardPage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return Center(child: Text(_error!));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: _load, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
     }
 
     final s = _summary!;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
       children: [
         if (_profileLabel.isNotEmpty)
           Padding(
