@@ -12,13 +12,13 @@ on:
           - release
           - debug
   push:
-    branches:
-      - foundation
+    branches: [foundation]
     paths:
-      - "lib/**"
-      - "pubspec.yaml"
-      - "pubspec.lock"
-      - ".github/workflows/build-apk.yml"
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'assets/**'
+      - '.github/workflows/build-apk.yml'
 
 concurrency:
   group: build-apk-${{ github.ref }}
@@ -38,7 +38,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -49,75 +49,33 @@ jobs:
       - name: Flutter version
         run: flutter --version
 
-      - name: Generate Android platform files
-        run: flutter create . --project-name pos_assistant --org com.innotrepid --platforms=android
-
-      - name: Patch AndroidManifest
+      - name: Generate Android platform (Mercate / com.aetherion.mercate)
         run: |
+          flutter create . --project-name mercate --org com.aetherion --platforms=android
+
+      - name: Set applicationId and label
+        run: |
+          # Force applicationId for both Groovy and Kotlin DSL
+          for f in android/app/build.gradle android/app/build.gradle.kts; do
+            if [ -f "$f" ]; then
+              sed -i 's/applicationId *= *".*"/applicationId = "com.aetherion.mercate"/' "$f" || true
+              sed -i "s/applicationId \".*\"/applicationId \"com.aetherion.mercate\"/" "$f" || true
+              sed -i 's/namespace *= *".*"/namespace = "com.aetherion.mercate"/' "$f" || true
+              sed -i "s/namespace \".*\"/namespace \"com.aetherion.mercate\"/" "$f" || true
+            fi
+          done
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-          grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
-          grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
-          grep -q "POST_NOTIFICATIONS" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
-
-      - name: Enable core library desugaring
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("android/app/build.gradle.kts")
-          if not path.exists():
-              path = Path("android/app/build.gradle")
-          if not path.exists():
-              raise SystemExit("No android/app/build.gradle(.kts) found")
-
-          text = path.read_text()
-          is_kts = path.name.endswith(".kts")
-          print(f"Patching {path} (kts={is_kts})")
-
-          if is_kts:
-              if "isCoreLibraryDesugaringEnabled" not in text:
-                  if "compileOptions {" in text:
-                      text = text.replace(
-                          "compileOptions {",
-                          "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
-                          1,
-                      )
-                  else:
-                      text = text.replace(
-                          "android {",
-                          "android {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }",
-                          1,
-                      )
-              if "desugar_jdk_libs" not in text:
-                  dep = '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
-                  if "dependencies {" in text:
-                      text = text.replace("dependencies {", "dependencies {\n" + dep, 1)
-                  else:
-                      text += "\n\ndependencies {\n" + dep + "}\n"
-          else:
-              if "coreLibraryDesugaringEnabled" not in text:
-                  if "compileOptions {" in text:
-                      text = text.replace(
-                          "compileOptions {",
-                          "compileOptions {\n        coreLibraryDesugaringEnabled true",
-                          1,
-                      )
-                  else:
-                      text = text.replace(
-                          "android {",
-                          "android {\n    compileOptions {\n        coreLibraryDesugaringEnabled true\n        sourceCompatibility JavaVersion.VERSION_1_8\n        targetCompatibility JavaVersion.VERSION_1_8\n    }",
-                          1,
-                      )
-              if "desugar_jdk_libs" not in text:
-                  dep = "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n"
-                  if "dependencies {" in text:
-                      text = text.replace("dependencies {", "dependencies {\n" + dep, 1)
-                  else:
-                      text += "\n\ndependencies {\n" + dep + "}\n"
-
-          path.write_text(text)
-          print(path.read_text())
-          PY
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's/android:label="[^"]*"/android:label="Mercate"/' "$MANIFEST"
+            grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
+            grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
+          fi
+          # Ensure assets folder exists for logo
+          mkdir -p assets/images
+          if [ ! -f assets/images/mercate_logo.png ]; then
+            # 1x1 teal placeholder if logo missing
+            printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' | base64 -d > assets/images/mercate_logo.png
+          fi
 
       - name: Get dependencies
         run: flutter pub get
@@ -126,7 +84,7 @@ jobs:
         env:
           BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
         run: |
-          echo "Building ${BUILD_TYPE} APK..."
+          echo "Building ${BUILD_TYPE} APK for com.aetherion.mercate (Mercate)..."
           if [ "${BUILD_TYPE}" = "debug" ]; then
             flutter build apk --debug
           else
@@ -137,19 +95,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: pos-assistant-apk
+          name: mercate-apk
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 14
-
-      - name: Upload diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-build-diagnostics
-          path: |
-            android/app/build.gradle
-            android/app/build.gradle.kts
-            android/app/src/main/AndroidManifest.xml
-          if-no-files-found: ignore
-          retention-days: 7

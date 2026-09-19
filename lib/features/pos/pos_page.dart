@@ -10,8 +10,17 @@ import 'sales_history_page.dart';
 
 class PosPage extends StatefulWidget {
   final VoidCallback? onSaleCompleted;
+  final VoidCallback? onOpenAssistant;
+  final VoidCallback? onOpenNotifications;
+  final int unreadCount;
 
-  const PosPage({super.key, this.onSaleCompleted});
+  const PosPage({
+    super.key,
+    this.onSaleCompleted,
+    this.onOpenAssistant,
+    this.onOpenNotifications,
+    this.unreadCount = 0,
+  });
 
   @override
   State<PosPage> createState() => _PosPageState();
@@ -189,8 +198,24 @@ class _PosPageState extends State<PosPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Point of Sale'),
+        title: const Text('POS'),
         actions: [
+          if (widget.onOpenNotifications != null)
+            IconButton(
+              tooltip: 'Notifications',
+              onPressed: widget.onOpenNotifications,
+              icon: Badge(
+                isLabelVisible: widget.unreadCount > 0,
+                label: Text('${widget.unreadCount}'),
+                child: const Icon(Icons.notifications_outlined),
+              ),
+            ),
+          if (widget.onOpenAssistant != null)
+            IconButton(
+              tooltip: 'Assistant',
+              icon: const Icon(Icons.auto_awesome),
+              onPressed: widget.onOpenAssistant,
+            ),
           IconButton(
             tooltip: 'Quick sale',
             icon: const Icon(Icons.flash_on),
