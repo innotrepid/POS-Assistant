@@ -5,18 +5,18 @@ import 'features/assistant/assistant_page.dart';
 import 'features/customers/customers_page.dart';
 import 'features/dashboard/dashboard_page.dart';
 import 'features/inventory/inventory_page.dart';
+import 'features/notifications/notifications_page.dart';
 import 'features/pos/pos_page.dart';
 import 'features/reports/reports_page.dart';
 import 'features/suppliers/suppliers_page.dart';
+import 'services/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
     await AppDatabase.instance.database;
-  } catch (_) {
-    // Ignore database init errors during tests
-  }
+  } catch (_) {}
 
   runApp(const POSAssistantApp());
 }
@@ -48,11 +48,33 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int selectedIndex = 0;
+  int _unread = 0;
+  final _notifications = NotificationService();
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshUnread();
+  }
+
+  Future<void> _refreshUnread() async {
+    try {
+      final c = await _notifications.unreadCount();
+      if (mounted) setState(() => _unread = c);
+    } catch (_) {}
+  }
 
   void _openAssistant() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const AssistantPage()),
     );
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const NotificationsPage()),
+    );
+    _refreshUnread();
   }
 
   @override
@@ -67,8 +89,29 @@ class _AppShellState extends State<AppShell> {
     ];
 
     return Scaffold(
-      body: pages[selectedIndex],
-      // Left side so it does not sit on top of page FABs (Expense / Add).
+      body: Stack(
+        children: [
+          pages[selectedIndex],
+          // Bell overlay top-right (does not depend on each page AppBar)
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4, right: 4),
+                child: IconButton(
+                  tooltip: 'Notifications',
+                  onPressed: _openNotifications,
+                  icon: Badge(
+                    isLabelVisible: _unread > 0,
+                    label: Text('$_unread'),
+                    child: const Icon(Icons.notifications_outlined),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: FloatingActionButton(
         heroTag: 'assistant_fab',
@@ -80,6 +123,7 @@ class _AppShellState extends State<AppShell> {
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
           setState(() => selectedIndex = index);
+          _refreshUnread();
         },
         destinations: const [
           NavigationDestination(

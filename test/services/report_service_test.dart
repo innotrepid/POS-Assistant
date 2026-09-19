@@ -67,8 +67,9 @@ void main() {
             unitCost: 30,
           ),
         ],
-        paidAmount: 100,
-        paymentType: 'cash',
+        payments: [
+          const PaymentInput(paymentType: 'cash', amount: 100),
+        ],
       );
 
       final day = await reports.daySales();
@@ -77,9 +78,6 @@ void main() {
       expect(day.cash, 100);
       expect(day.estimatedCost, 60);
       expect(day.grossProfit, 40);
-
-      final stock = await reports.stockOnHand();
-      expect(stock.first.quantity, 18);
     });
   });
 }

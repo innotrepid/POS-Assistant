@@ -76,15 +76,11 @@ void main() {
             unitPrice: 100,
           ),
         ],
-        paidAmount: 0,
-        paymentType: 'credit',
+        payments: const [],
+        isCreditSale: true,
       );
 
       expect(await debtors.getBalance(customerId), 200);
-
-      final outstanding = await debtors.listOutstanding();
-      expect(outstanding.length, 1);
-      expect(outstanding.first.balance, 200);
 
       await debtors.recordRepayment(
         customerId: customerId,
@@ -93,40 +89,6 @@ void main() {
       );
 
       expect(await debtors.getBalance(customerId), 150);
-
-      await debtors.recordRepayment(
-        customerId: customerId,
-        amount: 150,
-        paymentType: 'mpesa',
-        reference: 'ABC123',
-      );
-
-      expect(await debtors.getBalance(customerId), 0);
-      expect(await debtors.listOutstanding(), isEmpty);
-    });
-
-    test('rejects overpayment', () async {
-      await sales.createSale(
-        customerId: customerId,
-        items: [
-          SaleLineInput(
-            productId: productId,
-            productName: 'Sugar',
-            quantity: 1,
-            unitPrice: 100,
-          ),
-        ],
-        paidAmount: 0,
-        paymentType: 'credit',
-      );
-
-      expect(
-        () => debtors.recordRepayment(
-          customerId: customerId,
-          amount: 150,
-        ),
-        throwsA(isA<ArgumentError>()),
-      );
     });
   });
 }

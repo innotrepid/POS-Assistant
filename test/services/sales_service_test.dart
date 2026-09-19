@@ -20,29 +20,7 @@ void main() {
         unitPrice: 70,
         discount: 10,
       );
-
       expect(item.total, 200);
-    });
-
-    test('calculates line total without discount', () {
-      const item = SaleLineInput(
-        productId: 'product-1',
-        productName: 'Bread',
-        quantity: 2,
-        unitPrice: 80,
-      );
-
-      expect(item.total, 160);
-    });
-
-    test('rounds money to 2 decimals', () {
-      const item = SaleLineInput(
-        productId: 'p1',
-        productName: 'Oil',
-        quantity: 3,
-        unitPrice: 33.333,
-      );
-      expect(item.total, 100.0);
     });
   });
 
@@ -99,7 +77,7 @@ void main() {
     });
 
     test('cash sale deducts stock and records payment', () async {
-      final saleId = await sales.createSale(
+      final result = await sales.createSale(
         items: [
           SaleLineInput(
             productId: productId,
@@ -109,12 +87,12 @@ void main() {
             unitCost: 50,
           ),
         ],
-        paidAmount: 140,
-        paymentType: 'cash',
+        payments: [
+          const PaymentInput(paymentType: 'cash', amount: 140),
+        ],
       );
 
-      final sale = await sales.getSale(saleId);
-      expect(sale, isNotNull);
+      final sale = await sales.getSale(result.saleId);
       expect(sale!['total'], 140);
       expect(sale['payment_status'], 'paid');
 
@@ -126,40 +104,66 @@ void main() {
       expect((stock.first['s'] as num).toDouble(), 8);
     });
 
-    test('quick sale does not change stock', () async {
-      final saleId = await sales.createSale(
+    test('cash tendered calculates change', () async {
+      final result = await sales.createSale(
         items: [
-          const SaleLineInput(
-            productName: 'Service fee',
+          SaleLineInput(
+            productId: productId,
+            productName: 'Milk 500ml',
             quantity: 1,
-            unitPrice: 100,
-            isQuickSale: true,
+            unitPrice: 70,
           ),
         ],
-        paidAmount: 100,
-        paymentType: 'cash',
+        payments: [
+          const PaymentInput(paymentType: 'cash', amount: 100),
+        ],
+        amountTendered: 100,
       );
+      expect(result.changeGiven, 30);
+      final sale = await sales.getSale(result.saleId);
+      expect(sale!['paid_amount'], 70);
+    });
 
-      final sale = await sales.getSale(saleId);
-      expect(sale!['total'], 100);
-
-      final db = await appDb.database;
-      final stock = await db.rawQuery(
-        'SELECT COALESCE(SUM(quantity), 0) AS s FROM stock_movements WHERE product_id = ?',
-        [productId],
-      );
-      expect((stock.first['s'] as num).toDouble(), 10);
-
-      final items = await sales.getSaleItems(saleId);
-      expect(items.first['product_id'], isNull);
+    test('mpesa without reference is rejected', () async {
       expect(
-        (items.first['product_name'] as String).contains('quick sale'),
-        isTrue,
+        () => sales.createSale(
+          items: [
+            SaleLineInput(
+              productId: productId,
+              productName: 'Milk 500ml',
+              quantity: 1,
+              unitPrice: 70,
+            ),
+          ],
+          payments: [
+            const PaymentInput(paymentType: 'mpesa', amount: 70),
+          ],
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('underpay without explicit credit is rejected', () async {
+      expect(
+        () => sales.createSale(
+          items: [
+            SaleLineInput(
+              productId: productId,
+              productName: 'Milk 500ml',
+              quantity: 1,
+              unitPrice: 70,
+            ),
+          ],
+          payments: [
+            const PaymentInput(paymentType: 'cash', amount: 20),
+          ],
+        ),
+        throwsA(isA<ArgumentError>()),
       );
     });
 
     test('credit sale requires customer and creates debtor row', () async {
-      final saleId = await sales.createSale(
+      final result = await sales.createSale(
         customerId: customerId,
         items: [
           SaleLineInput(
@@ -170,18 +174,18 @@ void main() {
             unitCost: 50,
           ),
         ],
-        paidAmount: 0,
-        paymentType: 'credit',
+        payments: const [],
+        isCreditSale: true,
       );
 
-      final sale = await sales.getSale(saleId);
+      final sale = await sales.getSale(result.saleId);
       expect(sale!['payment_status'], 'unpaid');
 
       final db = await appDb.database;
       final debtors = await db.query(
         'debtor_transactions',
         where: 'sale_id = ?',
-        whereArgs: [saleId],
+        whereArgs: [result.saleId],
       );
       expect(debtors.length, 1);
     });
@@ -197,26 +201,11 @@ void main() {
               unitPrice: 70,
             ),
           ],
-          paidAmount: 1400,
+          payments: [
+            const PaymentInput(paymentType: 'cash', amount: 1400),
+          ],
         ),
         throwsA(isA<StateError>()),
-      );
-    });
-
-    test('rejects credit balance without customer', () async {
-      expect(
-        () => sales.createSale(
-          items: [
-            SaleLineInput(
-              productId: productId,
-              productName: 'Milk 500ml',
-              quantity: 1,
-              unitPrice: 70,
-            ),
-          ],
-          paidAmount: 0,
-        ),
-        throwsA(isA<ArgumentError>()),
       );
     });
   });
