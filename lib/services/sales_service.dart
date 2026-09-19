@@ -13,7 +13,6 @@ const Set<String> kAllowedPaymentTypes = {
   'split',
 };
 
-/// One payment leg (supports split cash + M-Pesa etc.).
 class PaymentInput {
   final String paymentType;
   final double amount;
@@ -38,6 +37,18 @@ class SaleCreateResult {
   });
 }
 
+class SaleVoidResult {
+  final String saleId;
+  final double refundedAmount;
+  final bool stockRestored;
+
+  const SaleVoidResult({
+    required this.saleId,
+    required this.refundedAmount,
+    required this.stockRestored,
+  });
+}
+
 class SalesService {
   SalesService({
     AppDatabase? database,
@@ -51,7 +62,6 @@ class SalesService {
   final Uuid _uuid;
   final PolicyService _policy;
 
-  /// Hard + soft safety checks before createSale.
   Future<List<String>> preflightWarnings({
     required List<SaleLineInput> items,
     required double discount,
@@ -136,10 +146,6 @@ class SalesService {
     return rows.isNotEmpty;
   }
 
-  /// Creates a completed sale in one DB transaction.
-  ///
-  /// [isCreditSale] must be true to leave a balance (prevents accidental debt).
-  /// [amountTendered] for cash: if greater than total, change is returned.
   Future<SaleCreateResult> createSale({
     String? customerId,
     required List<SaleLineInput> items,
@@ -197,17 +203,14 @@ class SalesService {
     }
     final total = Money.round(subtotal - saleDiscount);
 
-    // Validate payment legs
     var paidFromPayments = 0.0;
     for (final p in payments) {
       final type = p.paymentType.trim().toLowerCase();
-      if (!kAllowedPaymentTypes.contains(type) || type == 'credit') {
-        if (type != 'cash' &&
-            type != 'mpesa' &&
-            type != 'card' &&
-            type != 'bank') {
-          throw ArgumentError('Unsupported payment type "$type".');
-        }
+      if (type != 'cash' &&
+          type != 'mpesa' &&
+          type != 'card' &&
+          type != 'bank') {
+        throw ArgumentError('Unsupported payment type "$type".');
       }
       if (p.amount < 0) {
         throw ArgumentError('Payment amount cannot be negative.');
@@ -223,7 +226,6 @@ class SalesService {
       paidFromPayments = Money.round(paidFromPayments + p.amount);
     }
 
-    // Cash tendered may exceed total → change
     var changeGiven = 0.0;
     var paid = paidFromPayments;
     if (amountTendered != null) {
@@ -231,7 +233,6 @@ class SalesService {
       if (tendered < 0) {
         throw ArgumentError('Amount tendered cannot be negative.');
       }
-      // If only cash and tendered provided, prefer tendered for change calc
       final cashOnly = payments.length == 1 &&
           payments.first.paymentType.toLowerCase() == 'cash';
       if (cashOnly && tendered > total) {
@@ -243,7 +244,6 @@ class SalesService {
     }
 
     if (paid > total) {
-      // Only cash overpay is converted to change; otherwise invalid
       final allCash = payments.every(
         (p) => p.paymentType.toLowerCase() == 'cash',
       );
@@ -257,7 +257,6 @@ class SalesService {
 
     final balance = Money.round(total - paid);
 
-    // Accidental underpay is not allowed unless explicit credit
     if (balance > 0 && !isCreditSale) {
       throw ArgumentError(
         'Sale has an unpaid balance of ${Money.format(balance)}. '
@@ -269,10 +268,6 @@ class SalesService {
       throw ArgumentError(
         'A customer is required when a sale has an outstanding balance.',
       );
-    }
-
-    if (isCreditSale && balance == 0 && paid == 0 && total > 0) {
-      // full credit with zero paid is fine
     }
 
     final allowNegative = await _policy.getAllowNegativeStock();
@@ -356,7 +351,6 @@ class SalesService {
       for (final p in payments) {
         final amt = Money.round(p.amount);
         if (amt <= 0) continue;
-        // Cap recorded cash payment at remaining total share
         await txn.insert('payments', {
           'id': _uuid.v4(),
           'sale_id': saleId,
@@ -367,9 +361,6 @@ class SalesService {
           'created_at': now,
         });
       }
-
-      // If we reduced cash overpay to total, ensure payments sum correctly
-      // by not writing the excess as payment.
 
       if (balance > 0) {
         await txn.insert('debtor_transactions', {
@@ -418,6 +409,178 @@ class SalesService {
     );
   }
 
+  /// Full void/refund of a completed sale.
+  ///
+  /// - Idempotent: already voided/refunded → StateError
+  /// - Restores stock for catalogue lines once
+  /// - Reverses remaining sale debt on the debtor ledger
+  /// - Writes a refund payment (negative amount) using preferred method
+  /// - Does not rewrite historical line prices
+  Future<SaleVoidResult> voidSale({
+    required String saleId,
+    required String reason,
+    String? refundPaymentType,
+    String? refundReference,
+  }) async {
+    final why = reason.trim();
+    if (why.isEmpty) {
+      throw ArgumentError('A reason is required to void a sale.');
+    }
+
+    final db = await _database.database;
+    final saleRows = await db.query(
+      'sales',
+      where: 'id = ?',
+      whereArgs: [saleId],
+      limit: 1,
+    );
+    if (saleRows.isEmpty) {
+      throw StateError('Sale not found.');
+    }
+
+    final sale = saleRows.first;
+    final status = sale['sale_status'] as String? ?? '';
+    if (status == 'voided' || status == 'refunded') {
+      throw StateError('Sale is already $status. Stock was not restored again.');
+    }
+    if (status != 'completed') {
+      throw StateError('Only completed sales can be voided (status: $status).');
+    }
+
+    // Guard: stock already restored for this sale?
+    final priorRefund = await db.query(
+      'stock_movements',
+      where: "reference_id = ? AND movement_type = 'sale_refund'",
+      whereArgs: [saleId],
+      limit: 1,
+    );
+    if (priorRefund.isNotEmpty) {
+      throw StateError(
+        'Stock was already restored for this sale. Void aborted.',
+      );
+    }
+
+    final total = Money.round((sale['total'] as num?)?.toDouble() ?? 0);
+    final paid = Money.round((sale['paid_amount'] as num?)?.toDouble() ?? 0);
+    final balance = Money.round((sale['balance'] as num?)?.toDouble() ?? 0);
+    final customerId = sale['customer_id'] as String?;
+
+    final items = await db.query(
+      'sale_items',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+    );
+
+    final payments = await db.query(
+      'payments',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+      orderBy: 'created_at ASC',
+    );
+
+    var preferredType = refundPaymentType?.trim().toLowerCase();
+    if (preferredType == null || preferredType.isEmpty) {
+      if (payments.isNotEmpty) {
+        preferredType = payments.first['payment_type'] as String? ?? 'cash';
+      } else {
+        preferredType = 'cash';
+      }
+    }
+
+    final now = DateTime.now().toIso8601String();
+    var stockRestored = false;
+
+    await db.transaction((txn) async {
+      // Restore stock for catalogue items
+      for (final item in items) {
+        final productId = item['product_id'] as String?;
+        if (productId == null || productId.isEmpty) continue;
+
+        final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
+        if (qty <= 0) continue;
+
+        final unitCost = (item['unit_cost'] as num?)?.toDouble();
+
+        await txn.insert('stock_movements', {
+          'id': _uuid.v4(),
+          'product_id': productId,
+          'movement_type': 'sale_refund',
+          'quantity': qty,
+          'unit_cost': unitCost,
+          'reference_id': saleId,
+          'reason': 'Void/refund: $why',
+          'created_at': now,
+        });
+        stockRestored = true;
+      }
+
+      // Reverse remaining debt on this sale
+      if (balance > 0 && customerId != null) {
+        await txn.insert('debtor_transactions', {
+          'id': _uuid.v4(),
+          'customer_id': customerId,
+          'sale_id': saleId,
+          'transaction_type': 'sale_void_reversal',
+          'amount': -balance,
+          'notes': 'Void: $why',
+          'created_at': now,
+        });
+      }
+
+      // Refund of amount previously paid (money back to customer)
+      if (paid > 0) {
+        await txn.insert('payments', {
+          'id': _uuid.v4(),
+          'sale_id': saleId,
+          'customer_id': customerId,
+          'payment_type': 'refund_$preferredType',
+          'amount': -paid,
+          'reference': refundReference?.trim(),
+          'notes': 'Void refund: $why',
+          'created_at': now,
+        });
+      }
+
+      await txn.update(
+        'sales',
+        {
+          'sale_status': 'voided',
+          'payment_status': 'refunded',
+          'paid_amount': 0,
+          'balance': 0,
+        },
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+
+      await txn.insert('audit_logs', {
+        'id': _uuid.v4(),
+        'action': 'sale_voided',
+        'entity_type': 'sale',
+        'entity_id': saleId,
+        'previous_value':
+            'total=$total, paid=$paid, balance=$balance, status=completed',
+        'new_value':
+            'status=voided, refunded=$paid, debt_reversed=$balance, '
+            'method=$preferredType',
+        'reason': why,
+        'created_at': now,
+      });
+    });
+
+    return SaleVoidResult(
+      saleId: saleId,
+      refundedAmount: paid,
+      stockRestored: stockRestored,
+    );
+  }
+
+  /// True when refunded amount meets/exceeds configured large-refund threshold.
+  Future<bool> isLargeRefund(double amount) async {
+    final threshold = await _policy.getLargeRefundAmount();
+    return Money.round(amount) >= threshold;
+  }
+
   Future<Map<String, dynamic>?> getSale(String saleId) async {
     final db = await _database.database;
     final rows = await db.query(
@@ -436,6 +599,16 @@ class SalesService {
       'sale_items',
       where: 'sale_id = ?',
       whereArgs: [saleId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getSalePayments(String saleId) async {
+    final db = await _database.database;
+    return db.query(
+      'payments',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+      orderBy: 'created_at ASC',
     );
   }
 

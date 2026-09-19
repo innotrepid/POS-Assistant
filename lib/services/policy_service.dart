@@ -12,6 +12,7 @@ class PolicyService {
   static const allowNegativeStock = 'policy_allow_negative_stock';
   static const largeDiscountPercent = 'policy_large_discount_percent';
   static const blockOverdueCredit = 'policy_block_overdue_credit';
+  static const largeRefundAmount = 'policy_large_refund_amount';
 
   Future<bool> getAllowNegativeStock() async {
     return (await _get(allowNegativeStock)) == '1';
@@ -21,7 +22,6 @@ class PolicyService {
     await _set(allowNegativeStock, value ? '1' : '0');
   }
 
-  /// Percent of subtotal that counts as a "large" discount (default 20).
   Future<double> getLargeDiscountPercent() async {
     final raw = await _get(largeDiscountPercent);
     return double.tryParse(raw ?? '') ?? 20;
@@ -37,6 +37,16 @@ class PolicyService {
 
   Future<void> setBlockOverdueCredit(bool value) async {
     await _set(blockOverdueCredit, value ? '1' : '0');
+  }
+
+  /// Refunds at or above this amount (KES) show a stronger warning. Default 5000.
+  Future<double> getLargeRefundAmount() async {
+    final raw = await _get(largeRefundAmount);
+    return double.tryParse(raw ?? '') ?? 5000;
+  }
+
+  Future<void> setLargeRefundAmount(double value) async {
+    await _set(largeRefundAmount, value.toString());
   }
 
   Future<String?> _get(String key) async {
