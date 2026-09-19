@@ -2,59 +2,159 @@ import 'package:uuid/uuid.dart';
 
 import '../core/database/app_database.dart';
 import '../core/utils/money.dart';
+import 'policy_service.dart';
 
-/// Allowed payment types for foundation POS.
 const Set<String> kAllowedPaymentTypes = {
   'cash',
   'mpesa',
   'card',
+  'bank',
   'credit',
   'split',
 };
+
+/// One payment leg (supports split cash + M-Pesa etc.).
+class PaymentInput {
+  final String paymentType;
+  final double amount;
+  final String? reference;
+
+  const PaymentInput({
+    required this.paymentType,
+    required this.amount,
+    this.reference,
+  });
+}
+
+class SaleCreateResult {
+  final String saleId;
+  final double changeGiven;
+  final List<String> warningsAcknowledged;
+
+  const SaleCreateResult({
+    required this.saleId,
+    this.changeGiven = 0,
+    this.warningsAcknowledged = const [],
+  });
+}
 
 class SalesService {
   SalesService({
     AppDatabase? database,
     Uuid? uuid,
+    PolicyService? policy,
   }) : _database = database ?? AppDatabase.instance,
-       _uuid = uuid ?? const Uuid();
+       _uuid = uuid ?? const Uuid(),
+       _policy = policy ?? PolicyService();
 
   final AppDatabase _database;
   final Uuid _uuid;
+  final PolicyService _policy;
 
-  /// Creates a completed sale inside a single DB transaction.
+  /// Hard + soft safety checks before createSale.
+  Future<List<String>> preflightWarnings({
+    required List<SaleLineInput> items,
+    required double discount,
+    required bool isCreditSale,
+    String? customerId,
+    double? customerExistingBalance,
+    double? customerCreditLimit,
+  }) async {
+    final warnings = <String>[];
+    final subtotal = Money.round(
+      items.fold<double>(0, (s, i) => s + i.total),
+    );
+    final saleDiscount = Money.round(discount);
+    final total = Money.round(subtotal - saleDiscount);
+
+    if (saleDiscount > 0) {
+      final pct = subtotal > 0 ? (saleDiscount / subtotal) * 100 : 0;
+      warnings.add(
+        'Discount applied: ${Money.format(saleDiscount)} '
+        '(${pct.toStringAsFixed(1)}% of ${Money.format(subtotal)}). '
+        'Final total ${Money.format(total)}.',
+      );
+      final largePct = await _policy.getLargeDiscountPercent();
+      if (pct >= largePct) {
+        warnings.add(
+          'LARGE DISCOUNT: ${pct.toStringAsFixed(1)}% '
+          '(threshold ${largePct.toStringAsFixed(0)}%).',
+        );
+      }
+      if (total == 0) {
+        warnings.add('Discount reduces the sale total to zero.');
+      }
+    }
+
+    for (final item in items) {
+      if (item.unitCost != null &&
+          item.unitPrice < item.unitCost! &&
+          !item.isQuickSale) {
+        warnings.add(
+          'BELOW COST: ${item.productName} sells at '
+          '${Money.format(item.unitPrice)} below cost '
+          '${Money.format(item.unitCost!)}.',
+        );
+      }
+      if (!item.isQuickSale && item.unitCost == null) {
+        warnings.add('Cost unknown for ${item.productName}.');
+      }
+    }
+
+    if (isCreditSale) {
+      warnings.add(
+        'This sale creates DEBT. Outstanding on this sale will be '
+        'the unpaid balance after any amount paid now.',
+      );
+      if (customerExistingBalance != null && customerExistingBalance > 0) {
+        warnings.add(
+          'Customer already owes ${Money.format(customerExistingBalance)}.',
+        );
+      }
+      if (customerCreditLimit != null &&
+          customerExistingBalance != null &&
+          customerExistingBalance + total > customerCreditLimit) {
+        warnings.add(
+          'Credit limit ${Money.format(customerCreditLimit)} may be exceeded.',
+        );
+      }
+    }
+
+    return warnings;
+  }
+
+  Future<bool> isDuplicateReference(String reference) async {
+    final ref = reference.trim();
+    if (ref.isEmpty) return false;
+    final db = await _database.database;
+    final rows = await db.query(
+      'payments',
+      where: 'reference = ?',
+      whereArgs: [ref],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  /// Creates a completed sale in one DB transaction.
   ///
-  /// Catalogue items (with [SaleLineInput.productId]) deduct stock.
-  /// Quick-sale items (no product id) do **not** touch inventory.
-  Future<String> createSale({
+  /// [isCreditSale] must be true to leave a balance (prevents accidental debt).
+  /// [amountTendered] for cash: if greater than total, change is returned.
+  Future<SaleCreateResult> createSale({
     String? customerId,
     required List<SaleLineInput> items,
-    required double paidAmount,
     double discount = 0,
-    String paymentType = 'cash',
-    String? paymentReference,
+    required List<PaymentInput> payments,
+    bool isCreditSale = false,
+    double? amountTendered,
+    List<String> warningsAcknowledged = const [],
   }) async {
     if (items.isEmpty) {
       throw ArgumentError('A sale must contain at least one item.');
     }
 
-    final normalizedPaymentType = paymentType.trim().toLowerCase();
-    if (normalizedPaymentType.isEmpty) {
-      throw ArgumentError('Payment type is required.');
-    }
-    if (!kAllowedPaymentTypes.contains(normalizedPaymentType)) {
-      throw ArgumentError(
-        'Unsupported payment type "$paymentType". '
-        'Allowed: ${kAllowedPaymentTypes.join(', ')}.',
-      );
-    }
-
     if (discount < 0) {
       throw ArgumentError('Sale discount cannot be negative.');
-    }
-
-    if (paidAmount < 0) {
-      throw ArgumentError('Paid amount cannot be negative.');
     }
 
     for (final item in items) {
@@ -62,29 +162,24 @@ class SalesService {
           (item.productId == null || item.productId!.trim().isEmpty)) {
         throw ArgumentError('Catalogue items must have a product ID.');
       }
-
       if (item.productName.trim().isEmpty) {
         throw ArgumentError('Every sale item must have a product name.');
       }
-
       if (item.quantity <= 0) {
         throw ArgumentError(
           'Quantity for ${item.productName} must be greater than zero.',
         );
       }
-
       if (item.unitPrice < 0) {
         throw ArgumentError(
           'Selling price for ${item.productName} cannot be negative.',
         );
       }
-
       if (item.discount < 0) {
         throw ArgumentError(
           'Discount for ${item.productName} cannot be negative.',
         );
       }
-
       final lineGross = Money.round(item.quantity * item.unitPrice);
       if (item.discount > lineGross) {
         throw ArgumentError(
@@ -97,19 +192,78 @@ class SalesService {
       items.fold<double>(0, (sum, item) => sum + item.total),
     );
     final saleDiscount = Money.round(discount);
-
     if (saleDiscount > subtotal) {
       throw ArgumentError('Sale discount cannot exceed the subtotal.');
     }
-
     final total = Money.round(subtotal - saleDiscount);
-    final paid = Money.round(paidAmount);
+
+    // Validate payment legs
+    var paidFromPayments = 0.0;
+    for (final p in payments) {
+      final type = p.paymentType.trim().toLowerCase();
+      if (!kAllowedPaymentTypes.contains(type) || type == 'credit') {
+        if (type != 'cash' &&
+            type != 'mpesa' &&
+            type != 'card' &&
+            type != 'bank') {
+          throw ArgumentError('Unsupported payment type "$type".');
+        }
+      }
+      if (p.amount < 0) {
+        throw ArgumentError('Payment amount cannot be negative.');
+      }
+      if (p.amount == 0) continue;
+
+      if ((type == 'mpesa' || type == 'bank') &&
+          (p.reference == null || p.reference!.trim().isEmpty)) {
+        throw ArgumentError(
+          '${type.toUpperCase()} payment requires a transaction/reference number.',
+        );
+      }
+      paidFromPayments = Money.round(paidFromPayments + p.amount);
+    }
+
+    // Cash tendered may exceed total → change
+    var changeGiven = 0.0;
+    var paid = paidFromPayments;
+    if (amountTendered != null) {
+      final tendered = Money.round(amountTendered);
+      if (tendered < 0) {
+        throw ArgumentError('Amount tendered cannot be negative.');
+      }
+      // If only cash and tendered provided, prefer tendered for change calc
+      final cashOnly = payments.length == 1 &&
+          payments.first.paymentType.toLowerCase() == 'cash';
+      if (cashOnly && tendered > total) {
+        paid = total;
+        changeGiven = Money.round(tendered - total);
+      } else if (cashOnly) {
+        paid = Money.round(payments.first.amount);
+      }
+    }
 
     if (paid > total) {
-      throw ArgumentError('Paid amount cannot exceed the sale total.');
+      // Only cash overpay is converted to change; otherwise invalid
+      final allCash = payments.every(
+        (p) => p.paymentType.toLowerCase() == 'cash',
+      );
+      if (allCash) {
+        changeGiven = Money.round(paid - total);
+        paid = total;
+      } else {
+        throw ArgumentError('Paid amount cannot exceed the sale total.');
+      }
     }
 
     final balance = Money.round(total - paid);
+
+    // Accidental underpay is not allowed unless explicit credit
+    if (balance > 0 && !isCreditSale) {
+      throw ArgumentError(
+        'Sale has an unpaid balance of ${Money.format(balance)}. '
+        'Choose Credit explicitly, or pay the full amount.',
+      );
+    }
 
     if (balance > 0 && (customerId == null || customerId.trim().isEmpty)) {
       throw ArgumentError(
@@ -117,13 +271,16 @@ class SalesService {
       );
     }
 
+    if (isCreditSale && balance == 0 && paid == 0 && total > 0) {
+      // full credit with zero paid is fine
+    }
+
+    final allowNegative = await _policy.getAllowNegativeStock();
     final saleId = _uuid.v4();
     final now = DateTime.now().toIso8601String();
-
     final db = await _database.database;
 
     await db.transaction((txn) async {
-      // Stock checks only for catalogue products.
       for (final item in items) {
         if (item.isQuickSale) continue;
 
@@ -135,14 +292,15 @@ class SalesService {
           ''',
           [item.productId],
         );
+        final currentStock =
+            (result.first['stock'] as num?)?.toDouble() ?? 0;
 
-        final currentStock = (result.first['stock'] as num?)?.toDouble() ?? 0;
-
-        if (currentStock < item.quantity) {
+        if (currentStock < item.quantity && !allowNegative) {
           throw StateError(
             'Insufficient stock for ${item.productName}. '
             'Available: ${_formatNumber(currentStock)}, '
-            'requested: ${_formatNumber(item.quantity)}.',
+            'requested: ${_formatNumber(item.quantity)}. '
+            '(Enable negative stock in policies to override.)',
           );
         }
       }
@@ -195,17 +353,23 @@ class SalesService {
         }
       }
 
-      if (paid > 0) {
+      for (final p in payments) {
+        final amt = Money.round(p.amount);
+        if (amt <= 0) continue;
+        // Cap recorded cash payment at remaining total share
         await txn.insert('payments', {
           'id': _uuid.v4(),
           'sale_id': saleId,
           'customer_id': customerId,
-          'payment_type': normalizedPaymentType,
-          'amount': paid,
-          'reference': paymentReference?.trim(),
+          'payment_type': p.paymentType.trim().toLowerCase(),
+          'amount': amt > total ? total : amt,
+          'reference': p.reference?.trim(),
           'created_at': now,
         });
       }
+
+      // If we reduced cash overpay to total, ensure payments sum correctly
+      // by not writing the excess as payment.
 
       if (balance > 0) {
         await txn.insert('debtor_transactions', {
@@ -218,6 +382,10 @@ class SalesService {
         });
       }
 
+      final ack = warningsAcknowledged.isEmpty
+          ? ''
+          : ' warnings=${warningsAcknowledged.join(' | ')}';
+
       await txn.insert('audit_logs', {
         'id': _uuid.v4(),
         'action': 'sale_created',
@@ -225,13 +393,29 @@ class SalesService {
         'entity_id': saleId,
         'new_value':
             'total=$total, paid=$paid, balance=$balance, '
-            'payment_type=$normalizedPaymentType',
+            'change=$changeGiven, credit=$isCreditSale$ack',
         'reason': 'Sale completed',
         'created_at': now,
       });
+
+      if (warningsAcknowledged.isNotEmpty) {
+        await txn.insert('audit_logs', {
+          'id': _uuid.v4(),
+          'action': 'sale_warnings_acknowledged',
+          'entity_type': 'sale',
+          'entity_id': saleId,
+          'new_value': warningsAcknowledged.join(' || '),
+          'reason': 'Operator confirmed risk warnings',
+          'created_at': now,
+        });
+      }
     });
 
-    return saleId;
+    return SaleCreateResult(
+      saleId: saleId,
+      changeGiven: changeGiven,
+      warningsAcknowledged: warningsAcknowledged,
+    );
   }
 
   Future<Map<String, dynamic>?> getSale(String saleId) async {
@@ -276,16 +460,25 @@ class SalesService {
     );
   }
 
+  Future<List<Map<String, dynamic>>> searchPaymentsByReference(
+    String reference,
+  ) async {
+    final db = await _database.database;
+    return db.query(
+      'payments',
+      where: 'reference LIKE ?',
+      whereArgs: ['%${reference.trim()}%'],
+      orderBy: 'created_at DESC',
+      limit: 50,
+    );
+  }
+
   String _paymentStatus({
     required double paid,
     required double balance,
   }) {
-    if (balance == 0) {
-      return 'paid';
-    }
-    if (paid > 0) {
-      return 'partially_paid';
-    }
+    if (balance == 0) return 'paid';
+    if (paid > 0) return 'partially_paid';
     return 'unpaid';
   }
 
@@ -298,7 +491,6 @@ class SalesService {
 }
 
 class SaleLineInput {
-  /// Null for quick-sale (non-catalogue) lines — no stock impact.
   final String? productId;
   final String productName;
   final double quantity;
@@ -317,7 +509,5 @@ class SaleLineInput {
     this.isQuickSale = false,
   });
 
-  double get total {
-    return Money.round((quantity * unitPrice) - discount);
-  }
+  double get total => Money.round((quantity * unitPrice) - discount);
 }

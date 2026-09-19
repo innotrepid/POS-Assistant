@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/customer.dart';
+import '../../core/safety/safety_dialogs.dart';
 import '../../core/utils/money.dart';
+import '../../services/debtor_service.dart';
 import '../../services/sales_service.dart';
 import 'cart_controller.dart';
 import 'customer_picker_sheet.dart';
@@ -10,11 +12,13 @@ class CheckoutResult {
   final String saleId;
   final double total;
   final String paymentType;
+  final double changeGiven;
 
   const CheckoutResult({
     required this.saleId,
     required this.total,
     required this.paymentType,
+    this.changeGiven = 0,
   });
 }
 
@@ -35,8 +39,10 @@ class CheckoutSheet extends StatefulWidget {
 class _CheckoutSheetState extends State<CheckoutSheet> {
   String _paymentType = 'cash';
   final _paidController = TextEditingController();
+  final _tenderedController = TextEditingController();
   final _referenceController = TextEditingController();
   final _discountController = TextEditingController(text: '0');
+  final _debtors = DebtorService();
   Customer? _customer;
   bool _submitting = false;
   String? _error;
@@ -50,21 +56,26 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     return t < 0 ? 0 : t;
   }
 
-  bool get _needsCustomer {
-    if (_paymentType == 'credit') return true;
-    final paid = Money.parse(_paidController.text);
-    return paid < _total;
+  bool get _isCredit => _paymentType == 'credit';
+
+  double get _change {
+    if (_paymentType != 'cash') return 0;
+    final tendered = Money.parse(_tenderedController.text);
+    if (tendered > _total) return Money.round(tendered - _total);
+    return 0;
   }
 
   @override
   void initState() {
     super.initState();
     _paidController.text = _total.toStringAsFixed(2);
+    _tenderedController.text = _total.toStringAsFixed(2);
   }
 
   @override
   void dispose() {
     _paidController.dispose();
+    _tenderedController.dispose();
     _referenceController.dispose();
     _discountController.dispose();
     super.dispose();
@@ -84,11 +95,42 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     });
 
     try {
-      final paid = Money.parse(_paidController.text);
       final discount = Money.parse(_discountController.text);
+      final paid = _isCredit
+          ? Money.parse(_paidController.text)
+          : (_paymentType == 'cash'
+              ? Money.parse(_tenderedController.text)
+              : Money.parse(_paidController.text));
 
-      if (_needsCustomer && _customer == null) {
-        throw ArgumentError('Select a customer for credit or partial payment.');
+      if (_isCredit && _customer == null) {
+        throw ArgumentError('Select a customer for credit sales.');
+      }
+
+      if ((_paymentType == 'mpesa' || _paymentType == 'bank') &&
+          _referenceController.text.trim().isEmpty) {
+        throw ArgumentError(
+          '${_paymentType.toUpperCase()} requires a transaction/reference number.',
+        );
+      }
+
+      final ref = _referenceController.text.trim();
+      if (ref.isNotEmpty) {
+        final dup = await widget.salesService.isDuplicateReference(ref);
+        if (dup) {
+          final ok = await showSafetyWarning(
+            context,
+            title: 'Duplicate reference',
+            whatHappened: 'Reference "$ref" was used on a previous payment.',
+            whyItMatters:
+                'Duplicate M-Pesa/bank references may mean a double-recorded payment.',
+            affected: ref,
+            level: SafetyLevel.caution,
+          );
+          if (!ok) {
+            setState(() => _submitting = false);
+            return;
+          }
+        }
       }
 
       final items = widget.cart.lines
@@ -105,23 +147,92 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           )
           .toList();
 
-      final saleId = await widget.salesService.createSale(
+      double? existingBalance;
+      if (_customer != null) {
+        existingBalance = await _debtors.getBalance(_customer!.id);
+      }
+
+      final warnings = await widget.salesService.preflightWarnings(
+        items: items,
+        discount: discount,
+        isCreditSale: _isCredit,
+        customerId: _customer?.id,
+        customerExistingBalance: existingBalance,
+        customerCreditLimit: _customer?.creditLimit,
+      );
+
+      final acknowledged = <String>[];
+      for (final w in warnings) {
+        final critical = w.contains('BELOW COST') || w.contains('DEBT');
+        final ok = await showSafetyWarning(
+          context,
+          title: critical ? 'Risk warning' : 'Please confirm',
+          whatHappened: w,
+          whyItMatters: critical
+              ? 'This affects profit or customer debt. Proceed only if intentional.'
+              : 'Confirm you understand this adjustment.',
+          level: critical ? SafetyLevel.critical : SafetyLevel.caution,
+        );
+        if (!ok) {
+          setState(() => _submitting = false);
+          return;
+        }
+        acknowledged.add(w);
+      }
+
+      final confirmLines = <String>[
+        'Subtotal ${Money.format(_subtotal)}',
+        if (discount > 0) 'Discount -${Money.format(discount)}',
+        'Total ${Money.format(_total)}',
+        'Payment ${_paymentType.toUpperCase()}',
+        if (_paymentType == 'cash')
+          'Tendered ${Money.format(Money.parse(_tenderedController.text))}',
+        if (_change > 0) 'Change ${Money.format(_change)}',
+        if (_isCredit) 'Credit / debt sale',
+        if (_customer != null) 'Customer ${_customer!.name}',
+        if (ref.isNotEmpty) 'Ref $ref',
+      ];
+
+      final confirmed = await showSaleConfirmation(
+        context,
+        lines: confirmLines,
+      );
+      if (!confirmed) {
+        setState(() => _submitting = false);
+        return;
+      }
+
+      final paymentAmount = _isCredit
+          ? paid
+          : (_paymentType == 'cash'
+              ? (_change > 0 ? _total : paid)
+              : paid);
+
+      final result = await widget.salesService.createSale(
         customerId: _customer?.id,
         items: items,
-        paidAmount: paid,
         discount: discount,
-        paymentType: _paymentType,
-        paymentReference: _referenceController.text.trim().isEmpty
-            ? null
-            : _referenceController.text.trim(),
+        isCreditSale: _isCredit,
+        amountTendered:
+            _paymentType == 'cash' ? Money.parse(_tenderedController.text) : null,
+        payments: [
+          if (paymentAmount > 0 || _paymentType == 'cash')
+            PaymentInput(
+              paymentType: _isCredit && paymentAmount == 0 ? 'cash' : _paymentType,
+              amount: _isCredit ? paymentAmount : (_paymentType == 'cash' ? Money.parse(_tenderedController.text) : paymentAmount),
+              reference: ref.isEmpty ? null : ref,
+            ),
+        ],
+        warningsAcknowledged: acknowledged,
       );
 
       if (!mounted) return;
       Navigator.of(context).pop(
         CheckoutResult(
-          saleId: saleId,
+          saleId: result.saleId,
           total: _total,
           paymentType: _paymentType,
+          changeGiven: result.changeGiven,
         ),
       );
     } catch (e) {
@@ -145,24 +256,23 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Checkout',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Checkout', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text('Subtotal ${Money.format(_subtotal)}'),
             const SizedBox(height: 12),
             TextField(
               controller: _discountController,
               decoration: const InputDecoration(
-                labelText: 'Sale discount',
+                labelText: 'Sale discount (amount)',
                 border: OutlineInputBorder(),
+                helperText: 'Warnings appear if discount is large or total is zero',
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) {
                 setState(() {
-                  if (_paymentType != 'credit') {
+                  if (!_isCredit) {
                     _paidController.text = _total.toStringAsFixed(2);
+                    _tenderedController.text = _total.toStringAsFixed(2);
                   }
                 });
               },
@@ -176,7 +286,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             Wrap(
               spacing: 8,
               children: [
-                for (final type in ['cash', 'mpesa', 'card', 'credit'])
+                for (final type in ['cash', 'mpesa', 'card', 'bank', 'credit'])
                   ChoiceChip(
                     label: Text(type.toUpperCase()),
                     selected: _paymentType == type,
@@ -187,6 +297,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                           _paidController.text = '0';
                         } else {
                           _paidController.text = _total.toStringAsFixed(2);
+                          _tenderedController.text = _total.toStringAsFixed(2);
                         }
                       });
                     },
@@ -194,36 +305,86 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               ],
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _paidController,
-              decoration: const InputDecoration(
-                labelText: 'Amount paid',
-                border: OutlineInputBorder(),
+            if (_paymentType == 'cash') ...[
+              TextField(
+                controller: _tenderedController,
+                decoration: const InputDecoration(
+                  labelText: 'Cash received',
+                  border: OutlineInputBorder(),
+                  helperText: 'Change is calculated automatically',
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              onChanged: (_) => setState(() {}),
-            ),
-            if (_paymentType == 'mpesa') ...[
+              if (_change > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Change ${Money.format(_change)}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.greenAccent,
+                        ),
+                  ),
+                ),
+            ] else if (!_isCredit) ...[
+              TextField(
+                controller: _paidController,
+                decoration: const InputDecoration(
+                  labelText: 'Amount paid',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
+              ),
+            ] else ...[
+              TextField(
+                controller: _paidController,
+                decoration: const InputDecoration(
+                  labelText: 'Amount paid now (optional)',
+                  border: OutlineInputBorder(),
+                  helperText: 'Rest becomes customer debt',
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
+            if (_paymentType == 'mpesa' ||
+                _paymentType == 'bank' ||
+                _paymentType == 'card') ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _referenceController,
-                decoration: const InputDecoration(
-                  labelText: 'M-Pesa reference',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _paymentType == 'mpesa'
+                      ? 'M-Pesa reference (required)'
+                      : _paymentType == 'bank'
+                          ? 'Bank reference (required)'
+                          : 'Card reference (optional)',
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ],
-            if (_needsCustomer) ...[
+            if (_isCredit) ...[
               const SizedBox(height: 12),
+              Material(
+                color: Colors.red.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                child: const ListTile(
+                  leading: Icon(Icons.warning, color: Colors.red),
+                  title: Text('Credit / debt sale'),
+                  subtitle: Text('Unpaid balance will be recorded as debt.'),
+                ),
+              ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(
-                  _customer == null
-                      ? 'Select customer'
-                      : _customer!.name,
+                  _customer == null ? 'Select customer (required)' : _customer!.name,
                 ),
                 subtitle: _customer?.phone == null
-                    ? const Text('Required for credit / balance')
+                    ? null
                     : Text(_customer!.phone!),
                 trailing: const Icon(Icons.person_search),
                 onTap: _pickCustomer,
@@ -245,7 +406,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Complete sale'),
+                  : const Text('Review & complete'),
             ),
           ],
         ),
