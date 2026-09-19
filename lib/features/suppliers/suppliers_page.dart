@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/supplier.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/creditor_service.dart';
 import '../../services/supplier_service.dart';
@@ -112,8 +113,16 @@ class _SuppliersPageState extends State<SuppliersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Suppliers'),
+        backgroundColor: Colors.transparent,
+        title: Text(
+          'Suppliers',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+        ),
         actions: [
           IconButton(
             tooltip: 'Creditors',
@@ -153,48 +162,114 @@ class _SuppliersPageState extends State<SuppliersPage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return Center(child: Text(_error!));
+      return Center(
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
+          child: Text(_error!),
+        ),
+      );
     }
     if (_list.isEmpty) {
-      return const Center(
-        child: Text('No suppliers yet.\nTap + to add, then Receive goods.'),
+      return Center(
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
+          child: Text(
+            'No suppliers yet.\nTap + to add, then Receive goods.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ),
       );
     }
 
-    return ListView.separated(
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 88),
       itemCount: _list.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final s = _list[index];
         final bal = _balances[s.id] ?? 0;
-        return ListTile(
-          title: Text(s.name),
-          subtitle: Text(
-            [
-              if (s.phone != null && s.phone!.isNotEmpty) s.phone,
-              if (bal > 0) 'We owe ${Money.format(bal)}',
-            ].whereType<String>().join(' · '),
-          ),
-          trailing: bal > 0
-              ? Text(
-                  Money.format(bal),
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontWeight: FontWeight.w600,
+        final scheme = Theme.of(context).colorScheme;
+
+        return GlassPanel(
+          margin: const EdgeInsets.only(bottom: 10),
+          borderRadius: 18,
+          accent: bal > 0,
+          glowColor: bal > 0 ? scheme.error : null,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: InkWell(
+            onTap: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => SupplierStatementPage(
+                    supplierId: s.id,
+                    supplierName: s.name,
                   ),
-                )
-              : const Icon(Icons.chevron_right),
-          onTap: () async {
-            await Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => SupplierStatementPage(
-                  supplierId: s.id,
-                  supplierName: s.name,
                 ),
-              ),
-            );
-            _load();
-          },
+              );
+              _load();
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.local_shipping_outlined,
+                      color: scheme.primary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        s.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                      if (s.phone != null && s.phone!.isNotEmpty)
+                        Text(
+                          s.phone!,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                    ],
+                  ),
+                ),
+                if (bal > 0)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'WE OWE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                          color: scheme.error,
+                        ),
+                      ),
+                      Text(
+                        Money.format(bal),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: scheme.error,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+              ],
+            ),
+          ),
         );
       },
     );
