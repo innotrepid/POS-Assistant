@@ -67,65 +67,107 @@ class _InventoryPageState extends State<InventoryPage> {
     final costController = TextEditingController();
     final stockController = TextEditingController(text: '0');
     final minController = TextEditingController(text: '0');
+    var selectedUnit = profile.defaultUnit;
     final unitController = TextEditingController(text: profile.defaultUnit);
+    final units = profile.suggestedUnits;
 
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Add product'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  autofocus: true,
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: const Text('Add product'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(labelText: 'Name'),
+                      autofocus: true,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Unit',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final u in units)
+                          ChoiceChip(
+                            label: Text(u),
+                            selected: selectedUnit == u,
+                            onSelected: (_) {
+                              setLocal(() {
+                                selectedUnit = u;
+                                unitController.text = u;
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                    if (profile.features.produceUnits) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Produce-friendly units for mama mboga',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                    TextField(
+                      controller: unitController,
+                      decoration: const InputDecoration(
+                        labelText: 'Or type unit',
+                      ),
+                      onChanged: (v) => setLocal(() => selectedUnit = v),
+                    ),
+                    TextField(
+                      controller: priceController,
+                      decoration:
+                          const InputDecoration(labelText: 'Selling price'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    TextField(
+                      controller: costController,
+                      decoration: const InputDecoration(labelText: 'Cost price'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    TextField(
+                      controller: stockController,
+                      decoration:
+                          const InputDecoration(labelText: 'Opening stock'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    TextField(
+                      controller: minController,
+                      decoration: const InputDecoration(
+                        labelText: 'Minimum stock (alert below this)',
+                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                  ],
                 ),
-                TextField(
-                  controller: unitController,
-                  decoration: const InputDecoration(labelText: 'Unit'),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
                 ),
-                TextField(
-                  controller: priceController,
-                  decoration: const InputDecoration(labelText: 'Selling price'),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                ),
-                TextField(
-                  controller: costController,
-                  decoration: const InputDecoration(labelText: 'Cost price'),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                ),
-                TextField(
-                  controller: stockController,
-                  decoration: const InputDecoration(labelText: 'Opening stock'),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                ),
-                TextField(
-                  controller: minController,
-                  decoration: const InputDecoration(
-                    labelText: 'Minimum stock (alert below this)',
-                  ),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Save'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -188,7 +230,9 @@ class _InventoryPageState extends State<InventoryPage> {
             children: [
               TextField(
                 controller: qtyController,
-                decoration: const InputDecoration(labelText: 'Quantity'),
+                decoration: InputDecoration(
+                  labelText: 'Quantity (${product.unit})',
+                ),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 autofocus: true,
@@ -349,7 +393,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     Row(
                       children: [
                         Text(
-                          'Stock ${_fmt(qty)}',
+                          'Stock ${_fmt(qty)} ${product.unit}',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: out

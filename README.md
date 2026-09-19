@@ -8,12 +8,19 @@ Offline-first business POS for small shops.
 ## Build APK (manual)
 
 1. GitHub → **Actions** → **Build APK**
-2. **Run workflow**
-3. Choose **release** or **debug**
-4. Download artifact **mercate-apk**
+2. **Run workflow** → release or debug
+3. Download artifact **mercate-apk**
 
-Also runs on pushes that change `lib/`, `pubspec.yaml`, or this workflow.
+## Logo
 
-## Branding
+Place official PNG at `assets/images/mercate_logo.png`, **or** put base64 in `assets/images/mercate_logo.b64` (APK workflow decodes it).
 
-Place the official logo at `assets/images/mercate_logo.png` (square PNG). The Home app bar and lock screen load it when present.
+Source logo: project attachments / brand kit (green M mark).
+
+## Profiles
+
+**Mama mboga** is the deep simple profile: units kg/bunch/heap/piece/bag/dozen, no Suppliers tab, weight-friendly stock, cash + M-Pesa + credit.
+
+## Phone test
+
+See [docs/PHONE_REGRESSION.md](docs/PHONE_REGRESSION.md).
