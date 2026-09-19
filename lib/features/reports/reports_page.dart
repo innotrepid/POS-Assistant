@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/pdf_report_builder.dart';
 import '../../services/report_service.dart';
@@ -72,7 +73,7 @@ class _ReportsPageState extends State<ReportsPage> {
 
       await Printing.sharePdf(
         bytes: bytes,
-        filename: 'pos-report-${day.businessDate}.pdf',
+        filename: 'mercate-report-${day.businessDate}.pdf',
       );
     } catch (e) {
       if (!mounted) return;
@@ -125,8 +126,16 @@ class _ReportsPageState extends State<ReportsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Reports'),
+        backgroundColor: Colors.transparent,
+        title: Text(
+          'Reports',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+        ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -154,72 +163,203 @@ class _ReportsPageState extends State<ReportsPage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return Center(child: Text(_error!));
+      return Center(
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
+          child: Text(_error!),
+        ),
+      );
     }
 
     final day = _day!;
-    final stockValue =
-        _stock.fold<double>(0, (s, r) => s + r.stockValue);
-    final debtorsTotal =
-        _debtors.fold<double>(0, (s, r) => s + r.balance);
-    final creditorsTotal =
-        _creditors.fold<double>(0, (s, r) => s + r.balance);
+    final stockValue = _stock.fold<double>(0, (s, r) => s + r.stockValue);
+    final debtorsTotal = _debtors.fold<double>(0, (s, r) => s + r.balance);
+    final creditorsTotal = _creditors.fold<double>(0, (s, r) => s + r.balance);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
-        if (_exporting)
-          const LinearProgressIndicator(),
-        Text(
-          'Today · ${day.businessDate}',
-          style: Theme.of(context).textTheme.titleLarge,
+        if (_exporting) const LinearProgressIndicator(),
+
+        GlassPanel(
+          accent: true,
+          borderRadius: 24,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'TODAY',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                day.businessDate,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                Money.format(day.salesTotal),
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1,
+                    ),
+              ),
+              Text(
+                '${day.saleCount} sales · profit est. ${Money.format(day.grossProfit)}',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
-        _row('Sales', Money.format(day.salesTotal),
-            subtitle: '${day.saleCount} transactions'),
-        _row('Cash', Money.format(day.cash)),
-        _row('M-Pesa', Money.format(day.mpesa)),
-        if (day.card > 0) _row('Card', Money.format(day.card)),
-        _row('New credit', Money.format(day.creditTotal)),
-        _row('Est. COGS', Money.format(day.estimatedCost)),
-        _row('Gross profit (est.)', Money.format(day.grossProfit)),
-        _row('Expenses', Money.format(day.expensesTotal)),
-        const Divider(height: 28),
-        Text('Stock', style: Theme.of(context).textTheme.titleMedium),
-        _row('Value at cost', Money.format(stockValue),
-            subtitle: '${_stock.length} products'),
-        const Divider(height: 28),
-        Text('Debtors', style: Theme.of(context).textTheme.titleMedium),
-        _row('Owed to you', Money.format(debtorsTotal)),
-        ..._debtors.take(8).map(
-              (d) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(d.name),
-                trailing: Text(Money.format(d.balance)),
+        const SizedBox(height: 12),
+
+        Row(
+          children: [
+            Expanded(
+              child: _mini(
+                'Cash',
+                Money.format(day.cash),
+                Icons.payments_outlined,
               ),
             ),
-        if (_debtors.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('None'),
-          ),
-        const Divider(height: 28),
-        Text('Creditors', style: Theme.of(context).textTheme.titleMedium),
-        _row('You owe', Money.format(creditorsTotal)),
-        ..._creditors.take(8).map(
-              (c) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(c.name),
-                trailing: Text(Money.format(c.balance)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _mini(
+                'M-Pesa',
+                Money.format(day.mpesa),
+                Icons.phone_android_outlined,
               ),
             ),
-        if (_creditors.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('None'),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _mini(
+                'Credit',
+                Money.format(day.creditTotal),
+                Icons.handshake_outlined,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _mini(
+                'Expenses',
+                Money.format(day.expensesTotal),
+                Icons.trending_down,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        GlassPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Stock value',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                Money.format(stockValue),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              Text(
+                '${_stock.length} products at cost',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ),
+        ),
+        const SizedBox(height: 12),
+
+        GlassPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Debtors',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                Money.format(debtorsTotal),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              ),
+              if (_debtors.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('None'),
+                )
+              else
+                ..._debtors.take(8).map(
+                      (d) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(d.name),
+                        trailing: Text(
+                          Money.format(d.balance),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        GlassPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Creditors',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                Money.format(creditorsTotal),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              ),
+              if (_creditors.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('None'),
+                )
+              else
+                ..._creditors.take(8).map(
+                      (c) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(c.name),
+                        trailing: Text(
+                          Money.format(c.balance),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+            ],
+          ),
+        ),
         const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: _exporting ? null : _sharePdf,
@@ -230,14 +370,32 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  Widget _row(String label, String value, {String? subtitle}) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(label),
-      subtitle: subtitle == null ? null : Text(subtitle),
-      trailing: Text(
-        value,
-        style: const TextStyle(fontWeight: FontWeight.w600),
+  Widget _mini(String label, String value, IconData icon) {
+    return GlassPanel(
+      borderRadius: 18,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(height: 10),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }

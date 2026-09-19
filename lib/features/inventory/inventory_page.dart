@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/inventory_service.dart';
@@ -238,8 +239,16 @@ class _InventoryPageState extends State<InventoryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Stock'),
+        backgroundColor: Colors.transparent,
+        title: Text(
+          'Stock',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+        ),
         actions: [
           if (widget.onOpenNotifications != null)
             IconButton(
@@ -273,45 +282,133 @@ class _InventoryPageState extends State<InventoryPage> {
     }
     if (_error != null) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: _load, child: const Text('Retry')),
-          ],
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: _load, child: const Text('Retry')),
+            ],
+          ),
         ),
       );
     }
     if (_products.isEmpty) {
-      return const Center(
-        child: Text('No products yet. Tap + to add one.'),
+      return Center(
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
+          child: Text(
+            'No products yet. Tap + to add one.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ),
       );
     }
 
-    return ListView.separated(
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 88),
       itemCount: _products.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final product = _products[index];
         final qty = _stock[product.id] ?? 0;
         final low = product.minimumStock > 0 && qty <= product.minimumStock;
         final out = qty <= 0;
-        return ListTile(
-          title: Text(product.name),
-          subtitle: Text(
-            '${Money.format(product.sellingPrice)} · ${product.unit} · Stock: $qty'
-            '${product.minimumStock > 0 ? ' · min ${product.minimumStock}' : ''}'
-            '${product.active ? '' : ' · inactive'}'
-            '${out ? ' · OUT' : low ? ' · LOW' : ''}',
-          ),
-          trailing: IconButton(
-            icon: const Icon(Icons.add_box_outlined),
-            tooltip: 'Add stock',
-            onPressed: () => _addStock(product),
+        final scheme = Theme.of(context).colorScheme;
+
+        return GlassPanel(
+          margin: const EdgeInsets.only(bottom: 10),
+          borderRadius: 18,
+          accent: out || low,
+          glowColor: out ? scheme.error : (low ? Colors.orange : null),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${Money.format(product.sellingPrice)} · ${product.unit}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Text(
+                          'Stock ${_fmt(qty)}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: out
+                                ? scheme.error
+                                : low
+                                    ? Colors.orange
+                                    : scheme.primary,
+                          ),
+                        ),
+                        if (product.minimumStock > 0) ...[
+                          Text(
+                            '  · min ${_fmt(product.minimumStock)}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                        if (!product.active)
+                          Text(
+                            '  · inactive',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        if (out)
+                          Text(
+                            '  OUT',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                              letterSpacing: 1,
+                              color: scheme.error,
+                            ),
+                          )
+                        else if (low)
+                          const Text(
+                            '  LOW',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                              letterSpacing: 1,
+                              color: Colors.orange,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              IconButton.filledTonal(
+                onPressed: () => _addStock(product),
+                icon: const Icon(Icons.add_box_outlined),
+                tooltip: 'Add stock',
+              ),
+            ],
           ),
         );
       },
     );
+  }
+
+  String _fmt(double v) {
+    if (v == v.truncateToDouble()) return v.toInt().toString();
+    return v.toStringAsFixed(1);
   }
 }
