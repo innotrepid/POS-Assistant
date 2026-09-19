@@ -81,9 +81,8 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Profile: ${profile.label}. New products default to '
-            '${profile.defaultUnit}'
-            '${profile.defaultHasExpiry ? ', expiry on' : ''}.',
+            '${profile.label} · ${profile.interfaceLevel.name} interface. '
+            'New products default to ${profile.defaultUnit}.',
           ),
         ),
       );
@@ -93,6 +92,41 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
         SnackBar(content: Text(e.toString())),
       );
     }
+  }
+
+  String _levelLabel(InterfaceLevel level) {
+    switch (level) {
+      case InterfaceLevel.simple:
+        return 'Simple';
+      case InterfaceLevel.simplePlus:
+        return 'Simple+';
+      case InterfaceLevel.operational:
+        return 'Operational';
+      case InterfaceLevel.operationalPlus:
+        return 'Operational+';
+      case InterfaceLevel.controlled:
+        return 'Controlled';
+      case InterfaceLevel.advanced:
+        return 'Advanced';
+      case InterfaceLevel.management:
+        return 'Management';
+      case InterfaceLevel.full:
+        return 'Full';
+    }
+  }
+
+  String _featureSummary(ProfileFeatures f) {
+    final parts = <String>[];
+    if (f.sales) parts.add('sales');
+    if (f.stock) parts.add('stock');
+    if (f.customers) parts.add('customers');
+    if (f.suppliers) parts.add('suppliers');
+    if (f.reports) parts.add('reports');
+    if (f.barcodes) parts.add('barcode');
+    if (f.batchesExpiry) parts.add('batch/expiry');
+    if (f.weightSales) parts.add('weight');
+    if (f.splitPayments) parts.add('split pay');
+    return parts.join(' · ');
   }
 
   @override
@@ -128,8 +162,8 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Changes defaults for new products (unit, batches, expiry). '
-                      'Does not rewrite old data.',
+                      'Profiles focus the interface — not a weaker app. '
+                      'The same sales, stock, and debt engine runs underneath.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 12),
@@ -138,9 +172,10 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
                         child: ListTile(
                           title: Text(p.label),
                           subtitle: Text(
-                            p.enabled
-                                ? p.description
-                                : '${p.description}\n(Coming later)',
+                            '${_levelLabel(p.interfaceLevel)} · '
+                            '${_featureSummary(p.features)}\n'
+                            '${p.description}'
+                            '${p.enabled ? '' : '\n(Coming later)'}',
                           ),
                           isThreeLine: true,
                           enabled: p.enabled,

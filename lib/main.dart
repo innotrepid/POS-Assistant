@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/database/app_database.dart';
+import 'core/models/business_profile.dart';
 import 'features/assistant/assistant_page.dart';
 import 'features/customers/customers_page.dart';
 import 'features/dashboard/dashboard_page.dart';
@@ -11,6 +12,7 @@ import 'features/reports/reports_page.dart';
 import 'features/security/lock_screen.dart';
 import 'features/suppliers/suppliers_page.dart';
 import 'services/alert_scanner_service.dart';
+import 'services/business_profile_service.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
 import 'services/system_notification_service.dart';
@@ -95,6 +97,18 @@ class _RootGateState extends State<_RootGate> {
   }
 }
 
+class _NavItem {
+  final Widget page;
+  final NavigationDestination destination;
+  final bool Function(ProfileFeatures f) visible;
+
+  const _NavItem({
+    required this.page,
+    required this.destination,
+    required this.visible,
+  });
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -105,16 +119,22 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int selectedIndex = 0;
   int _unread = 0;
+  ProfileFeatures _features = ProfileFeatures.simpleCore;
   final _notifications = NotificationService();
   final _scanner = AlertScannerService();
+  final _profiles = BusinessProfileService();
 
   @override
   void initState() {
     super.initState();
-    _bootstrapAlerts();
+    _bootstrap();
   }
 
-  Future<void> _bootstrapAlerts() async {
+  Future<void> _bootstrap() async {
+    try {
+      final p = await _profiles.getProfile();
+      if (mounted) setState(() => _features = p.features);
+    } catch (_) {}
     try {
       await _scanner.scan();
     } catch (_) {}
@@ -141,21 +161,77 @@ class _AppShellState extends State<AppShell> {
     _refreshUnread();
   }
 
+  List<_NavItem> _items() {
+    return [
+      _NavItem(
+        page: const DashboardPage(),
+        destination: const NavigationDestination(
+          icon: Icon(Icons.dashboard_outlined),
+          selectedIcon: Icon(Icons.dashboard),
+          label: 'Home',
+        ),
+        visible: (_) => true,
+      ),
+      _NavItem(
+        page: PosPage(onSaleCompleted: _bootstrap),
+        destination: const NavigationDestination(
+          icon: Icon(Icons.point_of_sale_outlined),
+          selectedIcon: Icon(Icons.point_of_sale),
+          label: 'POS',
+        ),
+        visible: (f) => f.sales,
+      ),
+      _NavItem(
+        page: const InventoryPage(),
+        destination: const NavigationDestination(
+          icon: Icon(Icons.inventory_2_outlined),
+          selectedIcon: Icon(Icons.inventory_2),
+          label: 'Stock',
+        ),
+        visible: (f) => f.stock,
+      ),
+      _NavItem(
+        page: const CustomersPage(),
+        destination: const NavigationDestination(
+          icon: Icon(Icons.people_outline),
+          selectedIcon: Icon(Icons.people),
+          label: 'Customers',
+        ),
+        visible: (f) => f.customers,
+      ),
+      _NavItem(
+        page: const SuppliersPage(),
+        destination: const NavigationDestination(
+          icon: Icon(Icons.local_shipping_outlined),
+          selectedIcon: Icon(Icons.local_shipping),
+          label: 'Suppliers',
+        ),
+        visible: (f) => f.suppliers,
+      ),
+      _NavItem(
+        page: const ReportsPage(),
+        destination: const NavigationDestination(
+          icon: Icon(Icons.bar_chart_outlined),
+          selectedIcon: Icon(Icons.bar_chart),
+          label: 'Reports',
+        ),
+        visible: (f) => f.reports,
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final pages = <Widget>[
-      const DashboardPage(),
-      PosPage(onSaleCompleted: _bootstrapAlerts),
-      const InventoryPage(),
-      const CustomersPage(),
-      const SuppliersPage(),
-      const ReportsPage(),
-    ];
+    final all = _items();
+    final visible = all.where((i) => i.visible(_features)).toList();
+    if (selectedIndex >= visible.length) {
+      selectedIndex = 0;
+    }
 
     return Scaffold(
       body: Stack(
         children: [
-          pages[selectedIndex],
+          visible[selectedIndex].page,
           SafeArea(
             child: Align(
               alignment: Alignment.topRight,
@@ -188,37 +264,8 @@ class _AppShellState extends State<AppShell> {
           setState(() => selectedIndex = index);
           _refreshUnread();
         },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.point_of_sale_outlined),
-            selectedIcon: Icon(Icons.point_of_sale),
-            label: 'POS',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2),
-            label: 'Stock',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Customers',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.local_shipping_outlined),
-            selectedIcon: Icon(Icons.local_shipping),
-            label: 'Suppliers',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart),
-            label: 'Reports',
-          ),
+        destinations: [
+          for (final i in visible) i.destination,
         ],
       ),
     );

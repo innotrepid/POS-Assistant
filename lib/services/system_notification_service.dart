@@ -1,9 +1,10 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-/// Android (and iOS-capable) system tray notifications for important alerts.
+/// Android system tray notifications for important alerts.
 class SystemNotificationService {
   SystemNotificationService._();
-  static final SystemNotificationService instance = SystemNotificationService._();
+  static final SystemNotificationService instance =
+      SystemNotificationService._();
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -12,43 +13,49 @@ class SystemNotificationService {
 
   Future<void> init() async {
     if (_ready) return;
+    try {
+      const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const ios = DarwinInitializationSettings();
+      const settings = InitializationSettings(android: android, iOS: ios);
 
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios = DarwinInitializationSettings();
-    const settings = InitializationSettings(android: android, iOS: ios);
+      await _plugin.initialize(settings);
 
-    await _plugin.initialize(settings);
+      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
 
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    await androidPlugin?.requestNotificationsPermission();
+      try {
+        await androidPlugin?.requestNotificationsPermission();
+      } catch (_) {}
 
-    await androidPlugin?.createNotificationChannel(
-      const AndroidNotificationChannel(
-        'pos_inventory',
-        'Inventory',
-        description: 'Low and out-of-stock alerts',
-        importance: Importance.high,
-      ),
-    );
-    await androidPlugin?.createNotificationChannel(
-      const AndroidNotificationChannel(
-        'pos_debt',
-        'Debt',
-        description: 'Customer debt and overdue alerts',
-        importance: Importance.high,
-      ),
-    );
-    await androidPlugin?.createNotificationChannel(
-      const AndroidNotificationChannel(
-        'pos_business',
-        'Business',
-        description: 'General business alerts',
-        importance: Importance.defaultImportance,
-      ),
-    );
+      await androidPlugin?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'pos_inventory',
+          'Inventory',
+          description: 'Low and out-of-stock alerts',
+          importance: Importance.high,
+        ),
+      );
+      await androidPlugin?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'pos_debt',
+          'Debt',
+          description: 'Customer debt and overdue alerts',
+          importance: Importance.high,
+        ),
+      );
+      await androidPlugin?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'pos_business',
+          'Business',
+          description: 'General business alerts',
+          importance: Importance.defaultImportance,
+        ),
+      );
 
-    _ready = true;
+      _ready = true;
+    } catch (_) {
+      _ready = false;
+    }
   }
 
   Future<void> show({
@@ -60,6 +67,7 @@ class SystemNotificationService {
   }) async {
     try {
       await init();
+      if (!_ready) return;
 
       final channelId = switch (category) {
         'inventory' => 'pos_inventory',
@@ -92,8 +100,6 @@ class SystemNotificationService {
         body,
         NotificationDetails(android: androidDetails),
       );
-    } catch (_) {
-      // Never break the app if system notifications fail (permissions, etc.)
-    }
+    } catch (_) {}
   }
 }
