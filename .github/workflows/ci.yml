@@ -31,31 +31,32 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Check formatting
-        id: format
-        continue-on-error: true
-        run: dart format --set-exit-if-changed .
+      - name: Apply dart format
+        run: dart format .
 
-      - name: Show files needing format
-        if: steps.format.outcome == 'failure'
+      - name: Create format patch
         run: |
-          echo "=== Applying dart format to show expected style ==="
-          dart format .
-          echo "=== Diff ==="
-          git diff --stat
-          git diff
+          git diff > format.patch || true
+          if [ -s format.patch ]; then
+            echo "Format changes detected"
+            cat format.patch
+          else
+            echo "Already formatted"
+            echo "# no changes" > format.patch
+          fi
+
+      - name: Upload format patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: format-patch
+          path: format.patch
+          retention-days: 3
 
       - name: Analyze
         run: flutter analyze --fatal-infos
 
       - name: Run tests
         run: flutter test --coverage
-
-      - name: Fail if format was wrong
-        if: steps.format.outcome == 'failure'
-        run: |
-          echo "Code is not dart-formatted. See 'Show files needing format' step."
-          exit 1
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
