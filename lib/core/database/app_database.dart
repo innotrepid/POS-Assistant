@@ -15,7 +15,7 @@ class AppDatabase {
   Database? _database;
   bool _useMemory = false;
 
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
 
   Future<Database> get database async {
     if (_database != null) {
@@ -262,6 +262,23 @@ class AppDatabase {
     ''');
 
     await db.execute('''
+      CREATE TABLE notifications (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'info',
+        title TEXT NOT NULL,
+        body TEXT,
+        deep_link TEXT,
+        entity_type TEXT,
+        entity_id TEXT,
+        dedupe_key TEXT,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        read_at TEXT
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE audit_logs (
         id TEXT PRIMARY KEY,
         action TEXT NOT NULL,
@@ -310,6 +327,12 @@ class AppDatabase {
     await db.execute(
       'CREATE INDEX idx_expenses_created ON expenses(created_at)',
     );
+    await db.execute(
+      'CREATE INDEX idx_notifications_read ON notifications(is_read)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_payments_reference ON payments(reference)',
+    );
   }
 
   Future<void> _upgradeDatabase(
@@ -343,6 +366,30 @@ class AppDatabase {
       ''');
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_expenses_created ON expenses(created_at)',
+      );
+    }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          category TEXT NOT NULL,
+          priority TEXT NOT NULL DEFAULT 'info',
+          title TEXT NOT NULL,
+          body TEXT,
+          deep_link TEXT,
+          entity_type TEXT,
+          entity_id TEXT,
+          dedupe_key TEXT,
+          is_read INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          read_at TEXT
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_payments_reference ON payments(reference)',
       );
     }
   }
