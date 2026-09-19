@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../core/utils/money.dart';
+import '../../services/business_profile_service.dart';
 import '../../services/day_closing_service.dart';
 import '../../services/expense_service.dart';
+import '../settings/business_profile_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -14,9 +16,12 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   final _closing = DayClosingService();
   final _expenses = ExpenseService();
+  final _profileService = BusinessProfileService();
 
   DaySummary? _summary;
   List<Map<String, dynamic>> _todayExpenses = [];
+  String _shopName = 'My shop';
+  String _profileLabel = '';
   bool _loading = true;
   String? _error;
 
@@ -35,10 +40,14 @@ class _DashboardPageState extends State<DashboardPage> {
       final now = DateTime.now();
       final summary = await _closing.getSummary(now);
       final expenses = await _expenses.listExpenses(day: now);
+      final name = await _profileService.getBusinessName();
+      final profile = await _profileService.getProfile();
       if (!mounted) return;
       setState(() {
         _summary = summary;
         _todayExpenses = expenses;
+        _shopName = name;
+        _profileLabel = profile.label;
         _loading = false;
       });
     } catch (e) {
@@ -264,12 +273,27 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        title: Text(_shopName),
         actions: [
+          IconButton(
+            tooltip: 'Shop profile',
+            icon: const Icon(Icons.storefront_outlined),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const BusinessProfilePage(),
+                ),
+              );
+              _load();
+            },
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
+      // Right side — Assistant FAB is on the left (shell startFloat).
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'expense_fab',
         onPressed: _addExpense,
         icon: const Icon(Icons.remove_circle_outline),
         label: const Text('Expense'),
@@ -291,21 +315,30 @@ class _DashboardPageState extends State<DashboardPage> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (_profileLabel.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              _profileLabel,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         Text(
           'Today · ${s.businessDate}',
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 12),
-        _tile('Sales', Money.format(s.salesTotal), subtitle: '${s.saleCount} sales'),
+        _tile('Sales', Money.format(s.salesTotal),
+            subtitle: '${s.saleCount} sales'),
         _tile('Cash sales', Money.format(s.salesCash)),
         _tile('M-Pesa sales', Money.format(s.salesMpesa)),
         if (s.salesCard > 0) _tile('Card sales', Money.format(s.salesCard)),
         _tile('Expenses', Money.format(s.expensesTotal)),
         const SizedBox(height: 8),
         if (s.isClosed)
-          Chip(
-            avatar: const Icon(Icons.lock, size: 18),
-            label: const Text('Day closed'),
+          const Chip(
+            avatar: Icon(Icons.lock, size: 18),
+            label: Text('Day closed'),
           )
         else
           FilledButton.icon(
@@ -323,7 +356,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
         const Divider(height: 32),
         Text(
-          'Today\'s expenses',
+          "Today's expenses",
           style: Theme.of(context).textTheme.titleMedium,
         ),
         if (_todayExpenses.isEmpty)

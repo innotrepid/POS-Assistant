@@ -64,21 +64,18 @@ class _AppShellState extends State<AppShell> {
       const CustomersPage(),
       const SuppliersPage(),
       const ReportsPage(),
-      const AssistantPage(),
     ];
-
-    // FAB on every tab except Assistant (already the chat UI).
-    final showFab = selectedIndex != 6;
 
     return Scaffold(
       body: pages[selectedIndex],
-      floatingActionButton: showFab
-          ? FloatingActionButton(
-              onPressed: _openAssistant,
-              tooltip: 'Assistant',
-              child: const Icon(Icons.auto_awesome),
-            )
-          : null,
+      // Left side so it does not sit on top of page FABs (Expense / Add).
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'assistant_fab',
+        onPressed: _openAssistant,
+        tooltip: 'Assistant',
+        child: const Icon(Icons.auto_awesome),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
@@ -114,11 +111,6 @@ class _AppShellState extends State<AppShell> {
             icon: Icon(Icons.bar_chart_outlined),
             selectedIcon: Icon(Icons.bar_chart),
             label: 'Reports',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.auto_awesome_outlined),
-            selectedIcon: Icon(Icons.auto_awesome),
-            label: 'Assistant',
           ),
         ],
       ),
