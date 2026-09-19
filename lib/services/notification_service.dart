@@ -78,6 +78,17 @@ class NotificationService {
         limit: 1,
       );
       if (existing.isNotEmpty) {
+        // Refresh body/title in case numbers changed
+        await db.update(
+          'notifications',
+          {
+            'title': title,
+            'body': body,
+            'priority': priority,
+          },
+          where: 'id = ?',
+          whereArgs: [existing.first['id']],
+        );
         return existing.first['id'] as String;
       }
     }
@@ -99,6 +110,19 @@ class NotificationService {
       'read_at': null,
     });
     return id;
+  }
+
+  Future<void> markReadByDedupeKey(String dedupeKey) async {
+    final db = await _database.database;
+    await db.update(
+      'notifications',
+      {
+        'is_read': 1,
+        'read_at': DateTime.now().toIso8601String(),
+      },
+      where: 'dedupe_key = ? AND is_read = 0',
+      whereArgs: [dedupeKey],
+    );
   }
 
   Future<int> unreadCount() async {

@@ -9,7 +9,9 @@ import 'checkout_sheet.dart';
 import 'sales_history_page.dart';
 
 class PosPage extends StatefulWidget {
-  const PosPage({super.key});
+  final VoidCallback? onSaleCompleted;
+
+  const PosPage({super.key, this.onSaleCompleted});
 
   @override
   State<PosPage> createState() => _PosPageState();
@@ -158,12 +160,14 @@ class _PosPageState extends State<PosPage> {
 
     _cart.clear();
     await _loadProducts(query: _searchController.text);
+    widget.onSaleCompleted?.call();
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Sale complete · ${Money.format(result.total)} · ${result.paymentType}',
+          'Sale complete · ${Money.format(result.total)} · ${result.paymentType}'
+          '${result.changeGiven > 0 ? ' · change ${Money.format(result.changeGiven)}' : ''}',
         ),
         action: SnackBarAction(
           label: 'Receipt',

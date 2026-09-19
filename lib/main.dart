@@ -10,6 +10,7 @@ import 'features/pos/pos_page.dart';
 import 'features/reports/reports_page.dart';
 import 'features/security/lock_screen.dart';
 import 'features/suppliers/suppliers_page.dart';
+import 'services/alert_scanner_service.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
 
@@ -103,11 +104,19 @@ class _AppShellState extends State<AppShell> {
   int selectedIndex = 0;
   int _unread = 0;
   final _notifications = NotificationService();
+  final _scanner = AlertScannerService();
 
   @override
   void initState() {
     super.initState();
-    _refreshUnread();
+    _bootstrapAlerts();
+  }
+
+  Future<void> _bootstrapAlerts() async {
+    try {
+      await _scanner.scan();
+    } catch (_) {}
+    await _refreshUnread();
   }
 
   Future<void> _refreshUnread() async {
@@ -134,7 +143,7 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final pages = <Widget>[
       const DashboardPage(),
-      const PosPage(),
+      PosPage(onSaleCompleted: _bootstrapAlerts),
       const InventoryPage(),
       const CustomersPage(),
       const SuppliersPage(),
