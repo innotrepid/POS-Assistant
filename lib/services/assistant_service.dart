@@ -1,9 +1,10 @@
+import '../core/models/business_profile.dart';
 import '../core/utils/money.dart';
 import 'day_closing_service.dart';
 import 'inventory_service.dart';
 import 'report_service.dart';
 
-/// Simple offline, rule-based assistant — no network, no AI model.
+/// Offline rule-based assistant for Mercate — no network, no AI model.
 class AssistantService {
   AssistantService({
     ReportService? reports,
@@ -17,32 +18,37 @@ class AssistantService {
   final InventoryService _inventory;
   final DayClosingService _closing;
 
-  /// Suggested chips shown in the UI.
   static const List<String> suggestions = [
-    'How does this app work?',
+    'How does Mercate work?',
+    'Explain business profiles',
     'What did I sell today?',
     'Who owes me?',
     'Who do I owe?',
     'Low stock',
-    'Explain Home',
     'Explain POS',
     'Explain Stock',
-    'Explain Customers',
-    'Explain Suppliers',
-    'Explain Reports',
+    'Explain void / refund',
+    'Explain split payment',
   ];
 
   Future<String> ask(String raw) async {
     final q = raw.trim().toLowerCase();
     if (q.isEmpty) {
-      return 'Ask me about sales, stock, debtors, or how each screen works.';
+      return 'Ask me about sales, stock, debt, profiles, or how each screen works.';
     }
 
     if (_matches(q, [
       'how does', 'how do i', 'how this app', 'help', 'guide',
-      'what can you', 'what can this',
+      'what can you', 'what can this', 'mercate work',
     ])) {
       return _appOverview();
+    }
+
+    if (_matches(q, [
+      'business profile', 'explain profile', 'profiles',
+      'mama mboga', 'which profile', 'shop type',
+    ])) {
+      return _explainProfiles(q);
     }
 
     if (_matches(q, ['explain home', 'explain dashboard', 'what is home'])) {
@@ -72,6 +78,15 @@ class AssistantService {
     }
     if (_matches(q, ['close day', 'closing', 'end of day'])) {
       return _explainCloseDay();
+    }
+    if (_matches(q, ['void', 'refund'])) {
+      return _explainVoid();
+    }
+    if (_matches(q, ['split payment', 'split pay'])) {
+      return _explainSplit();
+    }
+    if (_matches(q, ['pin', 'biometric', 'lock', 'security'])) {
+      return _explainSecurity();
     }
 
     if (_matches(q, [
@@ -107,7 +122,7 @@ class AssistantService {
 
     return 'I did not understand that yet.\n\n'
         'Try: "What did I sell today?", "Who owes me?", '
-        '"Low stock", or "How does this app work?"';
+        '"Explain business profiles", or "How does Mercate work?"';
   }
 
   bool _matches(String q, List<String> keys) {
@@ -118,94 +133,129 @@ class AssistantService {
   }
 
   String _appOverview() {
-    return '''This app keeps your shop records offline on the phone.
+    return '''Mercate keeps your shop records offline on this phone.
 
 • Home — today’s sales, expenses, close the day
-• POS — sell (cash, M-Pesa, card, credit) + quick sale
+• POS — sell (cash, M-Pesa, card, credit, split) + quick sale
 • Stock — products and quantities
-• Customers — people who buy on credit; debtors & repayments
-• Suppliers — receive goods; creditors & pay suppliers
+• Customers — credit sales, debtors & repayments
+• Suppliers — receive goods; creditors (if your profile shows it)
 • Reports — summary + share PDF
-• Assistant (this chat) — answers from your local data
+• Assistant — answers from your local data
 
-Everything stays on the device. No internet required for normal use.''';
+Shop profile focuses the screens for your business type — the same engine runs underneath.\n\nAsk “Explain business profiles” for details.''';
+  }
+
+  String _explainProfiles(String q) {
+    final buf = StringBuffer();
+    buf.writeln(
+      'Profiles change what you see, not how strong Mercate is.\n'
+      'Same sales, stock, and debt engine — different focus.\n',
+    );
+
+    // Specific profile if named
+    for (final p in BusinessProfile.all) {
+      final label = p.label.toLowerCase();
+      final key = p.id.name.toLowerCase();
+      if (q.contains(key) ||
+          q.contains(label.split('/').first.trim()) ||
+          (p.id == BusinessProfileId.mamaMboga && q.contains('mama'))) {
+        buf.writeln('**${p.label}** (${p.interfaceLevel.name})');
+        buf.writeln(p.description);
+        buf.writeln(
+          'Default unit: ${p.defaultUnit}. '
+          'Suppliers tab: ${p.features.suppliers ? 'yes' : 'hidden'}.',
+        );
+        return buf.toString();
+      }
+    }
+
+    buf.writeln('Available types:\n');
+    for (final p in BusinessProfile.all) {
+      final status = p.enabled ? '' : ' (later)';
+      buf.writeln('• ${p.label}$status — ${p.interfaceLevel.name}');
+    }
+    buf.writeln(
+      '\nExample: Mama mboga gets sell, stock, customers, debts, '
+      'M-Pesa — without supplier complexity.\n'
+      'Duka adds suppliers, categories, barcodes.\n'
+      'Pharmacy turns on batch/expiry defaults.\n\n'
+      'Ask “mama mboga profile” or “pharmacy profile” for one type.',
+    );
+    return buf.toString();
   }
 
   String _explainHome() {
-    return '''Home (Dashboard)
+    return '''Home
 
-Shows today’s sales total, cash vs M-Pesa, and expenses.
-
-• Tap Expense to record transport, rent, utilities, etc.
-• Close day: enter opening cash and counted cash/M-Pesa. The app compares that to expected amounts from sales and cash expenses.''';
+Today’s sales, cash vs M-Pesa, expenses.\n'
+        'Expense button records costs. Close day counts the till.\n'
+        'Notifications and settings are in the top bar.''';
   }
 
   String _explainPos() {
-    return '''POS (Point of Sale)
+    return '''POS
 
-1. Search or tap products into the cart (stock must be available).
-2. Flash icon = Quick sale (not in catalogue; does not change stock).
-3. Pay — cash, M-Pesa, card, or credit (pick a customer if balance remains).
-4. History icon — past sales and receipts.
-
-A completed sale updates stock, payments, debtors (if credit), and the audit log in one step.''';
+1. Add products (or Quick sale for one-offs).
+2. Pay — cash, M-Pesa, card, bank, credit, or SPLIT.
+3. M-Pesa/bank need a reference.
+4. History for receipts; Void on a receipt reverses stock and debt once.''';
   }
 
   String _explainStock() {
-    return '''Stock (Inventory)
+    return '''Stock
 
-• + adds a product (name, selling price, optional cost & opening stock).
-• Add box icon receives more stock for a product.
-
-Stock is a ledger of movements (purchases, sales, adjustments) — not a single editable number — so history stays accurate.''';
+Add products with price, cost, opening qty, and minimum stock (for alerts).
+Add stock when goods arrive. Sales reduce stock automatically.''';
   }
 
   String _explainCustomers() {
-    return '''Customers & debtors
+    return '''Customers
 
-• Add customers you sell to on credit.
-• Wallet icon opens Debtors (who still owes you).
-• Tap a customer for their statement; use Repay for cash/M-Pesa/card.
-
-Repayments apply to the oldest unpaid sales first (FIFO).''';
+People who buy on credit. Debtors list who still owes.
+Repayments apply to oldest unpaid sales first.''';
   }
 
   String _explainSuppliers() {
-    return '''Suppliers & creditors
+    return '''Suppliers
 
-• Add suppliers, then Receive goods (inbox icon).
-• Choose products, quantities, unit costs; paid now can be 0 (full credit).
-• Stock increases and average cost updates.
-• Balance icon lists Creditors; Pay reduces what you owe (FIFO on purchases).''';
+Receive goods, track what you owe (creditors).
+Shown when your profile includes suppliers (e.g. Duka, not Mama mboga).''';
   }
 
   String _explainReports() {
     return '''Reports
 
-On-screen: today’s sales mix, estimated gross profit, expenses, stock value, debtors, creditors.
-
-PDF icon / Share PDF — offline A4 report you can send via WhatsApp, Files, etc.''';
+On-screen summary and Share PDF for WhatsApp or Files — all offline.''';
   }
 
   String _explainQuickSale() {
-    return '''Quick sale
-
-For items not in your catalogue (or one-off services).
-
-• Does not reduce inventory.
-• Still appears on the receipt as “(quick sale)”.
-• Prefer catalogue products when you track stock.''';
+    return '''Quick sale — items not in the catalogue. Does not change stock.''';
   }
 
   String _explainCloseDay() {
-    return '''Close day (on Home)
+    return '''Close day — lock today’s snapshot with counted cash/M-Pesa.
+Requires PIN/biometrics if app lock is on. Once per day.''';
+  }
 
-Locks a snapshot for the calendar day:
-• Opening cash in the till
-• Counted cash and M-Pesa
+  String _explainVoid() {
+    return '''Void (on a receipt)
 
-Expected cash ≈ opening + cash sales − cash expenses.
-You can only close once per day.''';
+Full reverse of a completed sale: stock restored once, debt reversed,
+money marked refunded. Needs a reason and PIN if lock is on.
+Cannot void twice.''';
+  }
+
+  String _explainSplit() {
+    return '''Split payment
+
+On checkout choose SPLIT. Add legs (e.g. cash 400 + M-Pesa 600).
+Shortfall can go on credit if a customer is selected.''';
+  }
+
+  String _explainSecurity() {
+    return '''Settings → Set PIN → Require unlock.
+Optional biometrics. Gates day close, profile change, and void.''';
   }
 
   Future<String> _todaySales() async {

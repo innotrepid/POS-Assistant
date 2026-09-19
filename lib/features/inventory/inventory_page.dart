@@ -6,7 +6,14 @@ import '../../services/business_profile_service.dart';
 import '../../services/inventory_service.dart';
 
 class InventoryPage extends StatefulWidget {
-  const InventoryPage({super.key});
+  final int unreadCount;
+  final VoidCallback? onOpenNotifications;
+
+  const InventoryPage({
+    super.key,
+    this.unreadCount = 0,
+    this.onOpenNotifications,
+  });
 
   @override
   State<InventoryPage> createState() => _InventoryPageState();
@@ -70,11 +77,6 @@ class _InventoryPageState extends State<InventoryPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'Profile defaults: ${profile.label} · unit ${profile.defaultUnit}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 8),
                 TextField(
                   controller: nameController,
                   decoration: const InputDecoration(labelText: 'Name'),
@@ -106,7 +108,6 @@ class _InventoryPageState extends State<InventoryPage> {
                   controller: minController,
                   decoration: const InputDecoration(
                     labelText: 'Minimum stock (alert below this)',
-                    helperText: '0 = no low-stock alert; out-of-stock still alerts',
                   ),
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
@@ -238,8 +239,18 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Inventory'),
+        title: const Text('Stock'),
         actions: [
+          if (widget.onOpenNotifications != null)
+            IconButton(
+              tooltip: 'Notifications',
+              onPressed: widget.onOpenNotifications,
+              icon: Badge(
+                isLabelVisible: widget.unreadCount > 0,
+                label: Text('${widget.unreadCount}'),
+                child: const Icon(Icons.notifications_outlined),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _load,
@@ -261,7 +272,16 @@ class _InventoryPageState extends State<InventoryPage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return Center(child: Text(_error!));
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error!),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: _load, child: const Text('Retry')),
+          ],
+        ),
+      );
     }
     if (_products.isEmpty) {
       return const Center(
