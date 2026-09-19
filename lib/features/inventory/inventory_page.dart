@@ -58,6 +58,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final priceController = TextEditingController();
     final costController = TextEditingController();
     final stockController = TextEditingController(text: '0');
+    final minController = TextEditingController(text: '0');
     final unitController = TextEditingController(text: profile.defaultUnit);
 
     final saved = await showDialog<bool>(
@@ -101,6 +102,15 @@ class _InventoryPageState extends State<InventoryPage> {
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                 ),
+                TextField(
+                  controller: minController,
+                  decoration: const InputDecoration(
+                    labelText: 'Minimum stock (alert below this)',
+                    helperText: '0 = no low-stock alert; out-of-stock still alerts',
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                ),
               ],
             ),
           ),
@@ -126,6 +136,7 @@ class _InventoryPageState extends State<InventoryPage> {
       final costText = costController.text.trim();
       final cost = costText.isEmpty ? null : Money.parse(costText);
       final opening = Money.parse(stockController.text);
+      final minStock = Money.parse(minController.text);
       final unit = unitController.text.trim().isEmpty
           ? profile.defaultUnit
           : unitController.text.trim();
@@ -135,6 +146,7 @@ class _InventoryPageState extends State<InventoryPage> {
         unit: unit,
         sellingPrice: price,
         costPrice: cost,
+        minimumStock: minStock < 0 ? 0 : minStock,
         trackBatches: profile.defaultTrackBatches,
         hasExpiry: profile.defaultHasExpiry,
       );
@@ -263,11 +275,15 @@ class _InventoryPageState extends State<InventoryPage> {
       itemBuilder: (context, index) {
         final product = _products[index];
         final qty = _stock[product.id] ?? 0;
+        final low = product.minimumStock > 0 && qty <= product.minimumStock;
+        final out = qty <= 0;
         return ListTile(
           title: Text(product.name),
           subtitle: Text(
             '${Money.format(product.sellingPrice)} · ${product.unit} · Stock: $qty'
-            '${product.active ? '' : ' · inactive'}',
+            '${product.minimumStock > 0 ? ' · min ${product.minimumStock}' : ''}'
+            '${product.active ? '' : ' · inactive'}'
+            '${out ? ' · OUT' : low ? ' · LOW' : ''}',
           ),
           trailing: IconButton(
             icon: const Icon(Icons.add_box_outlined),
