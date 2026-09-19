@@ -1,0 +1,155 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "APK type"
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
+  push:
+    branches:
+      - foundation
+    paths:
+      - "lib/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/build-apk.yml"
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Generate Android platform files
+        run: flutter create . --project-name pos_assistant --org com.innotrepid --platforms=android
+
+      - name: Patch AndroidManifest
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
+          grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
+          grep -q "POST_NOTIFICATIONS" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
+
+      - name: Enable core library desugaring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("android/app/build.gradle.kts")
+          if not path.exists():
+              path = Path("android/app/build.gradle")
+          if not path.exists():
+              raise SystemExit("No android/app/build.gradle(.kts) found")
+
+          text = path.read_text()
+          is_kts = path.name.endswith(".kts")
+          print(f"Patching {path} (kts={is_kts})")
+
+          if is_kts:
+              if "isCoreLibraryDesugaringEnabled" not in text:
+                  if "compileOptions {" in text:
+                      text = text.replace(
+                          "compileOptions {",
+                          "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
+                          1,
+                      )
+                  else:
+                      text = text.replace(
+                          "android {",
+                          "android {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }",
+                          1,
+                      )
+              if "desugar_jdk_libs" not in text:
+                  dep = '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+                  if "dependencies {" in text:
+                      text = text.replace("dependencies {", "dependencies {\n" + dep, 1)
+                  else:
+                      text += "\n\ndependencies {\n" + dep + "}\n"
+          else:
+              if "coreLibraryDesugaringEnabled" not in text:
+                  if "compileOptions {" in text:
+                      text = text.replace(
+                          "compileOptions {",
+                          "compileOptions {\n        coreLibraryDesugaringEnabled true",
+                          1,
+                      )
+                  else:
+                      text = text.replace(
+                          "android {",
+                          "android {\n    compileOptions {\n        coreLibraryDesugaringEnabled true\n        sourceCompatibility JavaVersion.VERSION_1_8\n        targetCompatibility JavaVersion.VERSION_1_8\n    }",
+                          1,
+                      )
+              if "desugar_jdk_libs" not in text:
+                  dep = "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n"
+                  if "dependencies {" in text:
+                      text = text.replace("dependencies {", "dependencies {\n" + dep, 1)
+                  else:
+                      text += "\n\ndependencies {\n" + dep + "}\n"
+
+          path.write_text(text)
+          print(path.read_text())
+          PY
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        env:
+          BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
+        run: |
+          echo "Building ${BUILD_TYPE} APK..."
+          if [ "${BUILD_TYPE}" = "debug" ]; then
+            flutter build apk --debug
+          else
+            flutter build apk --release
+          fi
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-assistant-apk
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-build-diagnostics
+          path: |
+            android/app/build.gradle
+            android/app/build.gradle.kts
+            android/app/src/main/AndroidManifest.xml
+          if-no-files-found: ignore
+          retention-days: 7
