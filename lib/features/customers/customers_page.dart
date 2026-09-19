@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/customer.dart';
+import '../../core/utils/money.dart';
 import '../../services/customer_service.dart';
+import '../../services/debtor_service.dart';
+import 'customer_statement_page.dart';
+import 'debtors_page.dart';
 
 class CustomersPage extends StatefulWidget {
   const CustomersPage({super.key});
@@ -12,7 +16,9 @@ class CustomersPage extends StatefulWidget {
 
 class _CustomersPageState extends State<CustomersPage> {
   final _service = CustomerService();
+  final _debtors = DebtorService();
   List<Customer> _customers = [];
+  Map<String, double> _balances = {};
   bool _loading = true;
   String? _error;
 
@@ -29,9 +35,14 @@ class _CustomersPageState extends State<CustomersPage> {
     });
     try {
       final list = await _service.getAllCustomers(activeOnly: false);
+      final balances = <String, double>{};
+      for (final c in list) {
+        balances[c.id] = await _debtors.getBalance(c.id);
+      }
       if (!mounted) return;
       setState(() {
         _customers = list;
+        _balances = balances;
         _loading = false;
       });
     } catch (e) {
@@ -103,6 +114,16 @@ class _CustomersPageState extends State<CustomersPage> {
       appBar: AppBar(
         title: const Text('Customers'),
         actions: [
+          IconButton(
+            tooltip: 'Debtors',
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const DebtorsPage()),
+              );
+              _load();
+            },
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
@@ -130,14 +151,36 @@ class _CustomersPageState extends State<CustomersPage> {
       separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final c = _customers[index];
+        final bal = _balances[c.id] ?? 0;
         return ListTile(
           title: Text(c.name),
           subtitle: Text(
             [
               if (c.phone != null && c.phone!.isNotEmpty) c.phone,
+              if (bal > 0) 'Owes ${Money.format(bal)}',
               if (!c.active) 'inactive',
             ].whereType<String>().join(' · '),
           ),
+          trailing: bal > 0
+              ? Text(
+                  Money.format(bal),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => CustomerStatementPage(
+                  customerId: c.id,
+                  customerName: c.name,
+                ),
+              ),
+            );
+            _load();
+          },
         );
       },
     );
