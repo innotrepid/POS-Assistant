@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'core/database/app_database.dart';
 import 'core/models/business_profile.dart';
+import 'core/theme/app_theme.dart';
 import 'features/assistant/assistant_page.dart';
 import 'features/customers/customers_page.dart';
 import 'features/dashboard/dashboard_page.dart';
@@ -15,6 +16,9 @@ import 'services/alert_scanner_service.dart';
 import 'services/business_profile_service.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
+import 'services/theme_service.dart';
+
+final themeController = ThemeController();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +26,8 @@ Future<void> main() async {
   try {
     await AppDatabase.instance.database;
   } catch (_) {}
+
+  await themeController.load();
 
   runApp(const MercateApp());
 }
@@ -31,15 +37,18 @@ class MercateApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Mercate',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF00E5A8),
-      ),
-      home: const _RootGate(),
+    return ListenableBuilder(
+      listenable: themeController,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'Mercate',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: themeController.mode,
+          home: const _RootGate(),
+        );
+      },
     );
   }
 }
@@ -250,7 +259,10 @@ class _AppShellState extends State<AppShell> {
     final showAssistantFab = currentId != 'pos';
 
     return Scaffold(
-      body: visible[selectedIndex].page,
+      extendBody: true,
+      body: GlassScaffoldBody(
+        child: visible[selectedIndex].page,
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: showAssistantFab
           ? FloatingActionButton(
