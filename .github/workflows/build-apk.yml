@@ -40,15 +40,16 @@ jobs:
         run: |
           flutter create . --project-name pos_assistant --org com.innotrepid --platforms=android
 
-      - name: Patch AndroidManifest for biometrics
+      - name: Patch AndroidManifest (biometrics + notifications)
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if ! grep -q "USE_BIOMETRIC" "$MANIFEST"; then
-            sed -i 's|<manifest |<manifest |' "$MANIFEST"
-            # Insert permissions before <application
             sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>\n    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
           fi
-          cat "$MANIFEST" | head -40
+          if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
+            sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
+          fi
+          head -50 "$MANIFEST"
 
       - name: Get dependencies
         run: flutter pub get

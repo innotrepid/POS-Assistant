@@ -78,7 +78,6 @@ class NotificationService {
         limit: 1,
       );
       if (existing.isNotEmpty) {
-        // Refresh body/title in case numbers changed
         await db.update(
           'notifications',
           {
@@ -110,6 +109,50 @@ class NotificationService {
       'read_at': null,
     });
     return id;
+  }
+
+  /// Returns true only when a brand-new unread notification was inserted.
+  Future<bool> pushIfNew({
+    required String category,
+    required String title,
+    required String body,
+    String priority = 'info',
+    String? deepLink,
+    String? entityType,
+    String? entityId,
+    required String dedupeKey,
+  }) async {
+    final db = await _database.database;
+    final existing = await db.query(
+      'notifications',
+      where: 'dedupe_key = ? AND is_read = 0',
+      whereArgs: [dedupeKey],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      await db.update(
+        'notifications',
+        {
+          'title': title,
+          'body': body,
+          'priority': priority,
+        },
+        where: 'id = ?',
+        whereArgs: [existing.first['id']],
+      );
+      return false;
+    }
+    await push(
+      category: category,
+      title: title,
+      body: body,
+      priority: priority,
+      deepLink: deepLink,
+      entityType: entityType,
+      entityId: entityId,
+      dedupeKey: dedupeKey,
+    );
+    return true;
   }
 
   Future<void> markReadByDedupeKey(String dedupeKey) async {

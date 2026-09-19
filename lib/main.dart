@@ -13,12 +13,14 @@ import 'features/suppliers/suppliers_page.dart';
 import 'services/alert_scanner_service.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
+import 'services/system_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
     await AppDatabase.instance.database;
+    await SystemNotificationService.instance.init();
   } catch (_) {}
 
   runApp(const POSAssistantApp());
