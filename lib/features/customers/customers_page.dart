@@ -72,6 +72,7 @@ class _CustomersPageState extends State<CustomersPage> {
                 decoration: const InputDecoration(labelText: 'Name'),
                 autofocus: true,
               ),
+              const SizedBox(height: 12),
               TextField(
                 controller: phoneCtrl,
                 decoration: const InputDecoration(labelText: 'Phone'),
@@ -112,14 +113,12 @@ class _CustomersPageState extends State<CustomersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(
           'Customers',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
               ),
         ),
         actions: [
@@ -136,9 +135,11 @@ class _CustomersPageState extends State<CustomersPage> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addCustomer,
-        child: const Icon(Icons.person_add),
+      floatingActionButton: RaisedFab(
+        child: FloatingActionButton(
+          onPressed: _addCustomer,
+          child: const Icon(Icons.person_add),
+        ),
       ),
       body: _buildBody(),
     );
@@ -223,11 +224,6 @@ class _CustomersPageState extends State<CustomersPage> {
                       if (c.phone != null && c.phone!.isNotEmpty)
                         Text(
                           c.phone!,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      if (!c.active)
-                        Text(
-                          'inactive',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                     ],
