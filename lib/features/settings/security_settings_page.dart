@@ -22,6 +22,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
   bool _bioAvailable = false;
   bool _allowNegativeStock = false;
   double _largeDiscountPct = 20;
+  int _overdueDays = 30;
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
     final bioAvail = await _security.canCheckBiometrics();
     final neg = await _policies.getAllowNegativeStock();
     final disc = await _policies.getLargeDiscountPercent();
+    final overdue = await _policies.getOverdueDebtDays();
     if (!mounted) return;
     setState(() {
       _lockEnabled = lock;
@@ -45,6 +47,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
       _bioAvailable = bioAvail;
       _allowNegativeStock = neg;
       _largeDiscountPct = disc;
+      _overdueDays = overdue;
       _loading = false;
     });
   }
@@ -130,15 +133,13 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                   title: Text('App lock'),
                   subtitle: Text(
                     'PIN and biometrics protect the app and sensitive actions '
-                    '(day close, shop profile).',
+                    '(day close, shop profile, void).',
                   ),
                 ),
                 SwitchListTile(
                   title: const Text('Require unlock'),
                   subtitle: Text(
-                    _hasPin
-                        ? 'Lock screen on open'
-                        : 'Set a PIN first',
+                    _hasPin ? 'Lock screen on open' : 'Set a PIN first',
                   ),
                   value: _lockEnabled,
                   onChanged: !_hasPin
@@ -177,8 +178,8 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                 ),
                 const Divider(),
                 const ListTile(
-                  title: Text('Sales policies'),
-                  subtitle: Text('Safety rule thresholds'),
+                  title: Text('Sales & debt policies'),
+                  subtitle: Text('Safety thresholds'),
                 ),
                 SwitchListTile(
                   title: const Text('Allow negative stock'),
@@ -193,7 +194,9 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                 ),
                 ListTile(
                   title: const Text('Large discount warning'),
-                  subtitle: Text('Warn at ${_largeDiscountPct.toStringAsFixed(0)}% or more'),
+                  subtitle: Text(
+                    'Warn at ${_largeDiscountPct.toStringAsFixed(0)}% or more',
+                  ),
                   trailing: SizedBox(
                     width: 100,
                     child: TextField(
@@ -213,15 +216,35 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                     ),
                   ),
                 ),
-                const Divider(),
-                const ListTile(
-                  title: Text('Licenses'),
-                  subtitle: Text('Open-source software notices'),
-                  trailing: Icon(Icons.chevron_right),
+                ListTile(
+                  title: const Text('Overdue debt after'),
+                  subtitle: Text(
+                    '$_overdueDays days from oldest unpaid credit sale',
+                  ),
+                  trailing: SizedBox(
+                    width: 100,
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        suffixText: 'days',
+                        isDense: true,
+                      ),
+                      keyboardType: TextInputType.number,
+                      controller: TextEditingController(
+                        text: '$_overdueDays',
+                      ),
+                      onSubmitted: (v) async {
+                        final n = int.tryParse(v) ?? 30;
+                        await _policies.setOverdueDebtDays(n);
+                        await _load();
+                      },
+                    ),
+                  ),
                 ),
-                // Flutter license page
+                const Divider(),
                 ListTile(
                   title: const Text('View licenses'),
+                  subtitle: const Text('Open-source software notices'),
+                  trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     showLicensePage(
                       context: context,
