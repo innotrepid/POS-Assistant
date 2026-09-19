@@ -15,31 +15,29 @@ import 'services/alert_scanner_service.dart';
 import 'services/business_profile_service.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
-import 'services/system_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
     await AppDatabase.instance.database;
-    await SystemNotificationService.instance.init();
   } catch (_) {}
 
-  runApp(const POSAssistantApp());
+  runApp(const MercateApp());
 }
 
-class POSAssistantApp extends StatelessWidget {
-  const POSAssistantApp({super.key});
+class MercateApp extends StatelessWidget {
+  const MercateApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'POS Assistant',
+      title: 'Mercate',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
         useMaterial3: true,
-        colorSchemeSeed: Colors.teal,
+        colorSchemeSeed: const Color(0xFF00E5A8),
       ),
       home: const _RootGate(),
     );
@@ -101,8 +99,10 @@ class _NavItem {
   final Widget page;
   final NavigationDestination destination;
   final bool Function(ProfileFeatures f) visible;
+  final String id;
 
   const _NavItem({
+    required this.id,
     required this.page,
     required this.destination,
     required this.visible,
@@ -164,7 +164,12 @@ class _AppShellState extends State<AppShell> {
   List<_NavItem> _items() {
     return [
       _NavItem(
-        page: const DashboardPage(),
+        id: 'home',
+        page: DashboardPage(
+          unreadCount: _unread,
+          onOpenNotifications: _openNotifications,
+          onOpenAssistant: _openAssistant,
+        ),
         destination: const NavigationDestination(
           icon: Icon(Icons.dashboard_outlined),
           selectedIcon: Icon(Icons.dashboard),
@@ -173,7 +178,13 @@ class _AppShellState extends State<AppShell> {
         visible: (_) => true,
       ),
       _NavItem(
-        page: PosPage(onSaleCompleted: _bootstrap),
+        id: 'pos',
+        page: PosPage(
+          onSaleCompleted: _bootstrap,
+          onOpenAssistant: _openAssistant,
+          onOpenNotifications: _openNotifications,
+          unreadCount: _unread,
+        ),
         destination: const NavigationDestination(
           icon: Icon(Icons.point_of_sale_outlined),
           selectedIcon: Icon(Icons.point_of_sale),
@@ -182,7 +193,11 @@ class _AppShellState extends State<AppShell> {
         visible: (f) => f.sales,
       ),
       _NavItem(
-        page: const InventoryPage(),
+        id: 'stock',
+        page: InventoryPage(
+          unreadCount: _unread,
+          onOpenNotifications: _openNotifications,
+        ),
         destination: const NavigationDestination(
           icon: Icon(Icons.inventory_2_outlined),
           selectedIcon: Icon(Icons.inventory_2),
@@ -191,6 +206,7 @@ class _AppShellState extends State<AppShell> {
         visible: (f) => f.stock,
       ),
       _NavItem(
+        id: 'customers',
         page: const CustomersPage(),
         destination: const NavigationDestination(
           icon: Icon(Icons.people_outline),
@@ -200,6 +216,7 @@ class _AppShellState extends State<AppShell> {
         visible: (f) => f.customers,
       ),
       _NavItem(
+        id: 'suppliers',
         page: const SuppliersPage(),
         destination: const NavigationDestination(
           icon: Icon(Icons.local_shipping_outlined),
@@ -209,6 +226,7 @@ class _AppShellState extends State<AppShell> {
         visible: (f) => f.suppliers,
       ),
       _NavItem(
+        id: 'reports',
         page: const ReportsPage(),
         destination: const NavigationDestination(
           icon: Icon(Icons.bar_chart_outlined),
@@ -228,36 +246,20 @@ class _AppShellState extends State<AppShell> {
       selectedIndex = 0;
     }
 
+    final currentId = visible[selectedIndex].id;
+    final showAssistantFab = currentId != 'pos';
+
     return Scaffold(
-      body: Stack(
-        children: [
-          visible[selectedIndex].page,
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 4, right: 4),
-                child: IconButton(
-                  tooltip: 'Notifications',
-                  onPressed: _openNotifications,
-                  icon: Badge(
-                    isLabelVisible: _unread > 0,
-                    label: Text('$_unread'),
-                    child: const Icon(Icons.notifications_outlined),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      body: visible[selectedIndex].page,
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'assistant_fab',
-        onPressed: _openAssistant,
-        tooltip: 'Assistant',
-        child: const Icon(Icons.auto_awesome),
-      ),
+      floatingActionButton: showAssistantFab
+          ? FloatingActionButton(
+              heroTag: 'assistant_fab',
+              onPressed: _openAssistant,
+              tooltip: 'Assistant',
+              child: const Icon(Icons.auto_awesome),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
