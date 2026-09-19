@@ -8,8 +8,10 @@ import 'features/inventory/inventory_page.dart';
 import 'features/notifications/notifications_page.dart';
 import 'features/pos/pos_page.dart';
 import 'features/reports/reports_page.dart';
+import 'features/security/lock_screen.dart';
 import 'features/suppliers/suppliers_page.dart';
 import 'services/notification_service.dart';
+import 'services/security_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,8 +36,59 @@ class POSAssistantApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.teal,
       ),
-      home: const AppShell(),
+      home: const _RootGate(),
     );
+  }
+}
+
+class _RootGate extends StatefulWidget {
+  const _RootGate();
+
+  @override
+  State<_RootGate> createState() => _RootGateState();
+}
+
+class _RootGateState extends State<_RootGate> {
+  final _security = SecurityService();
+  bool _loading = true;
+  bool _locked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    try {
+      final enabled = await _security.isLockEnabled();
+      if (!mounted) return;
+      setState(() {
+        _locked = enabled;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _locked = false;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_locked) {
+      return LockScreen(
+        onUnlocked: () => setState(() => _locked = false),
+      );
+    }
+    return const AppShell();
   }
 }
 
@@ -92,7 +145,6 @@ class _AppShellState extends State<AppShell> {
       body: Stack(
         children: [
           pages[selectedIndex],
-          // Bell overlay top-right (does not depend on each page AppBar)
           SafeArea(
             child: Align(
               alignment: Alignment.topRight,
