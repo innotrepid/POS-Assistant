@@ -1,3 +1,5 @@
+import 'package:sqflite/sqflite.dart';
+
 import '../core/database/app_database.dart';
 import '../core/models/business_profile.dart';
 
@@ -55,6 +57,3 @@ class BusinessProfileService {
     );
   }
 }
-
-// Re-export for callers that need ConflictAlgorithm without importing sqflite
-import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;

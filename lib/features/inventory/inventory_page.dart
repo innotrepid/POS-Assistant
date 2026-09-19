@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
 import '../../core/utils/money.dart';
+import '../../services/business_profile_service.dart';
 import '../../services/inventory_service.dart';
 
-/// Minimal product + stock management so POS has catalogue data.
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
 
@@ -14,6 +14,7 @@ class InventoryPage extends StatefulWidget {
 
 class _InventoryPageState extends State<InventoryPage> {
   final _inventory = InventoryService();
+  final _profiles = BusinessProfileService();
   List<Product> _products = [];
   Map<String, double> _stock = {};
   bool _loading = true;
@@ -52,10 +53,12 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> _showAddProduct() async {
+    final profile = await _profiles.getProfile();
     final nameController = TextEditingController();
     final priceController = TextEditingController();
     final costController = TextEditingController();
     final stockController = TextEditingController(text: '0');
+    final unitController = TextEditingController(text: profile.defaultUnit);
 
     final saved = await showDialog<bool>(
       context: context,
@@ -66,10 +69,19 @@ class _InventoryPageState extends State<InventoryPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Text(
+                  'Profile defaults: ${profile.label} · unit ${profile.defaultUnit}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
                 TextField(
                   controller: nameController,
                   decoration: const InputDecoration(labelText: 'Name'),
                   autofocus: true,
+                ),
+                TextField(
+                  controller: unitController,
+                  decoration: const InputDecoration(labelText: 'Unit'),
                 ),
                 TextField(
                   controller: priceController,
@@ -114,11 +126,17 @@ class _InventoryPageState extends State<InventoryPage> {
       final costText = costController.text.trim();
       final cost = costText.isEmpty ? null : Money.parse(costText);
       final opening = Money.parse(stockController.text);
+      final unit = unitController.text.trim().isEmpty
+          ? profile.defaultUnit
+          : unitController.text.trim();
 
       final product = await _inventory.createProduct(
         name: name,
+        unit: unit,
         sellingPrice: price,
         costPrice: cost,
+        trackBatches: profile.defaultTrackBatches,
+        hasExpiry: profile.defaultHasExpiry,
       );
 
       if (opening > 0) {
@@ -216,7 +234,9 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: FloatingActionButton(
+        heroTag: 'inventory_add_fab',
         onPressed: _showAddProduct,
         child: const Icon(Icons.add),
       ),
@@ -246,7 +266,7 @@ class _InventoryPageState extends State<InventoryPage> {
         return ListTile(
           title: Text(product.name),
           subtitle: Text(
-            '${Money.format(product.sellingPrice)} · Stock: $qty'
+            '${Money.format(product.sellingPrice)} · ${product.unit} · Stock: $qty'
             '${product.active ? '' : ' · inactive'}',
           ),
           trailing: IconButton(

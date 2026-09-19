@@ -11,5 +11,7 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('POS'), findsOneWidget);
     expect(find.text('Stock'), findsOneWidget);
+    // Assistant is FAB-only, not a bottom tab
+    expect(find.text('Assistant'), findsNothing);
   });
 }

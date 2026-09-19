@@ -6,30 +6,32 @@ Offline-first business companion for small shops.
 
 | Module | Status |
 |--------|--------|
-| POS, stock, customers, suppliers | Done |
-| Debtors / creditors | Done |
+| Trading (POS, stock, debtors, creditors) | Done |
 | Expenses + day close | Done |
-| Reports + PDF | Done (Uint8List fix) |
-| **Offline assistant** | **Done** |
-| Business profiles | Next |
+| Reports + PDF | Done |
+| Offline assistant (FAB only) | Done |
+| **Business profiles** | **Done** |
 
-## PDF fix
+## UI notes
 
-APK build failed because `doc.save()` is `List<int>` while `printing` needs `Uint8List`. Builder now returns `Uint8List.fromList(...)`.
+- **Assistant** = sparkle FAB on the **left** (not in bottom nav).
+- **Expense** / **Add product** FABs stay on the **right** so they do not overlap.
 
-## Assistant
+## Business profiles
 
-• **Floating sparkle button** on every tab (except Assistant itself)  
-• **Assistant** bottom tab  
-• Rule-based, offline — reads your SQLite data  
+Home → storefront icon → **Shop profile**
 
-Examples: “What did I sell today?”, “Who owes me?”, “Low stock”, “Explain POS”, “How does this app work?”
+| Profile | Defaults |
+|---------|----------|
+| Duka / general retail | unit `piece` (default) |
+| Mama mboga / produce | unit `kg` |
+| Mini-market | unit `piece` |
+| Wholesale | unit `carton` |
+| Hardware / clothing | unit `piece` |
+| Pharmacy / restaurant | listed, disabled until later |
+
+New products pick up unit / batch / expiry defaults from the active profile. Existing products are not rewritten.
 
 ## Phone install
 
-**Actions → Build APK** → `pos-assistant-apk` → install `app-release.apk`.
-
-## Roadmap
-
-1. ~~Core + reports + assistant~~  
-2. Business profiles (duka, mama mboga, mini-market, …)  
+**Actions → Build APK** → `pos-assistant-apk`.
