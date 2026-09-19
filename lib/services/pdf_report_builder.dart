@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -5,7 +7,7 @@ import '../core/utils/money.dart';
 import 'report_service.dart';
 
 class PdfReportBuilder {
-  Future<List<int>> buildBusinessReport({
+  Future<Uint8List> buildBusinessReport({
     required DaySalesReport day,
     required List<StockRow> stock,
     required List<PartyBalanceRow> debtors,
@@ -79,7 +81,7 @@ class PdfReportBuilder {
                       r.name,
                       _qty(r.quantity),
                       r.costPrice == null
-                          ? '—'
+                          ? '-'
                           : Money.format(r.costPrice!),
                       Money.format(r.stockValue),
                     ],
@@ -95,7 +97,7 @@ class PdfReportBuilder {
             pw.Padding(
               padding: const pw.EdgeInsets.only(top: 4),
               child: pw.Text(
-                '… and ${stock.length - 40} more products',
+                '... and ${stock.length - 40} more products',
                 style: const pw.TextStyle(fontSize: 9),
               ),
             ),
@@ -111,10 +113,7 @@ class PdfReportBuilder {
           pw.SizedBox(height: 8),
           _kv('Total owed to you', Money.format(debtorsTotal)),
           ...debtors.take(25).map(
-                (d) => _kv(
-                  d.name,
-                  Money.format(d.balance),
-                ),
+                (d) => _kv(d.name, Money.format(d.balance)),
               ),
           if (debtors.isEmpty) pw.Text('None'),
           pw.SizedBox(height: 16),
@@ -129,10 +128,7 @@ class PdfReportBuilder {
           pw.SizedBox(height: 8),
           _kv('Total you owe', Money.format(creditorsTotal)),
           ...creditors.take(25).map(
-                (c) => _kv(
-                  c.name,
-                  Money.format(c.balance),
-                ),
+                (c) => _kv(c.name, Money.format(c.balance)),
               ),
           if (creditors.isEmpty) pw.Text('None'),
 
@@ -145,7 +141,8 @@ class PdfReportBuilder {
       ),
     );
 
-    return doc.save();
+    final bytes = await doc.save();
+    return Uint8List.fromList(bytes);
   }
 
   pw.Widget _kv(String label, String value) {

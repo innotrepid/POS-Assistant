@@ -6,42 +6,30 @@ Offline-first business companion for small shops.
 
 | Module | Status |
 |--------|--------|
-| POS + inventory + quick sale | Done |
-| Customers + debtors | Done |
-| Suppliers + purchases + creditors | Done |
-| Expenses + daily closing | Done |
-| **Reports + PDF** | **Done** |
-| APK via GitHub Actions | Done |
-| Offline assistant | Next |
-| Business profiles | Later |
+| POS, stock, customers, suppliers | Done |
+| Debtors / creditors | Done |
+| Expenses + day close | Done |
+| Reports + PDF | Done (Uint8List fix) |
+| **Offline assistant** | **Done** |
+| Business profiles | Next |
+
+## PDF fix
+
+APK build failed because `doc.save()` is `List<int>` while `printing` needs `Uint8List`. Builder now returns `Uint8List.fromList(...)`.
+
+## Assistant
+
+• **Floating sparkle button** on every tab (except Assistant itself)  
+• **Assistant** bottom tab  
+• Rule-based, offline — reads your SQLite data  
+
+Examples: “What did I sell today?”, “Who owes me?”, “Low stock”, “Explain POS”, “How does this app work?”
 
 ## Phone install
 
-**Actions → Build APK** → artifact `pos-assistant-apk` → install.
-
-## Reports
-
-**Reports** tab shows:
-
-- Today’s sales (cash / M-Pesa / card / credit)
-- Estimated COGS + gross profit (from unit costs on sale lines)
-- Expenses
-- Stock value at cost
-- Debtors & creditors totals
-
-**Share PDF** / preview icons export a single offline business report (A4).
-
-## Full test checklist
-
-- [ ] Stock / POS / quick sale / credit  
-- [ ] Debtors repay  
-- [ ] Receive goods / pay supplier  
-- [ ] Expense + close day  
-- [ ] Reports on screen + Share PDF  
+**Actions → Build APK** → `pos-assistant-apk` → install `app-release.apk`.
 
 ## Roadmap
 
-1. ~~Core trading modules~~  
-2. ~~Reports + PDF~~  
-3. Offline assistant (rule-based Q&A)  
-4. Business profiles (duka, mama mboga, …)  
+1. ~~Core + reports + assistant~~  
+2. Business profiles (duka, mama mboga, mini-market, …)  

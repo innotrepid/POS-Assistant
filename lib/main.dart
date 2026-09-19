@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/database/app_database.dart';
+import 'features/assistant/assistant_page.dart';
 import 'features/customers/customers_page.dart';
 import 'features/dashboard/dashboard_page.dart';
 import 'features/inventory/inventory_page.dart';
@@ -48,6 +49,12 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int selectedIndex = 0;
 
+  void _openAssistant() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const AssistantPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
@@ -57,14 +64,21 @@ class _AppShellState extends State<AppShell> {
       const CustomersPage(),
       const SuppliersPage(),
       const ReportsPage(),
-      const _PlaceholderPage(
-        icon: Icons.auto_awesome_outlined,
-        title: 'Assistant',
-      ),
+      const AssistantPage(),
     ];
+
+    // FAB on every tab except Assistant (already the chat UI).
+    final showFab = selectedIndex != 6;
 
     return Scaffold(
       body: pages[selectedIndex],
+      floatingActionButton: showFab
+          ? FloatingActionButton(
+              onPressed: _openAssistant,
+              tooltip: 'Assistant',
+              child: const Icon(Icons.auto_awesome),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
@@ -107,34 +121,6 @@ class _AppShellState extends State<AppShell> {
             label: 'Assistant',
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PlaceholderPage extends StatelessWidget {
-  final IconData icon;
-  final String title;
-
-  const _PlaceholderPage({
-    required this.icon,
-    required this.title,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 72),
-            const SizedBox(height: 20),
-            Text(title, style: Theme.of(context).textTheme.headlineMedium),
-            const SizedBox(height: 8),
-            const Text('Module ready for implementation'),
-          ],
-        ),
       ),
     );
   }
