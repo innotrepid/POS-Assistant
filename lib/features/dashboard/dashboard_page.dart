@@ -393,7 +393,6 @@ class _DashboardPageState extends State<DashboardPage> {
     return ListView(
       padding: EdgeInsets.fromLTRB(16, topPad, 16, 100),
       children: [
-        // Greeting + shop
         Text(
           _greeting,
           style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -430,7 +429,6 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
         const SizedBox(height: 20),
 
-        // Hero sales glass
         GlassPanel(
           accent: true,
           borderRadius: 28,
@@ -441,7 +439,7 @@ class _DashboardPageState extends State<DashboardPage> {
               Row(
                 children: [
                   Text(
-                    'TODAY'S SALES',
+                    "TODAY'S SALES",
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -497,7 +495,6 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 14),
 
-        // Metric grid
         Row(
           children: [
             Expanded(
@@ -544,7 +541,6 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 18),
 
-        // Close day
         GlassPanel(
           borderRadius: 22,
           padding: const EdgeInsets.all(18),
@@ -587,7 +583,6 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 22),
 
-        // Expenses section
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
