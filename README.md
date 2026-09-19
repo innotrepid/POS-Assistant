@@ -9,38 +9,39 @@ Offline-first business companion for small shops.
 | POS + inventory + quick sale | Done |
 | Customers + debtors | Done |
 | Suppliers + purchases + creditors | Done |
-| **Expenses + daily closing** | **Done** |
+| Expenses + daily closing | Done |
+| **Reports + PDF** | **Done** |
 | APK via GitHub Actions | Done |
-| Reports + PDF | Next |
-| Offline assistant | Later |
+| Offline assistant | Next |
 | Business profiles | Later |
 
 ## Phone install
 
-**Actions → Build APK** → `pos-assistant-apk` → install `app-release.apk`.
+**Actions → Build APK** → artifact `pos-assistant-apk` → install.
 
-> Schema v3 adds `day_closings`. Fresh install is fine; existing installs upgrade on open.
+## Reports
 
-## Test expenses + close day
+**Reports** tab shows:
 
-1. Make a few **POS** sales (cash / M-Pesa).  
-2. **Home** → **Expense** → category + amount.  
-3. Home shows today’s sales, cash/M-Pesa split, expenses.  
-4. **Close day** → opening cash, counted cash, counted M-Pesa.  
-5. Snackbar shows match or cash variance.  
+- Today’s sales (cash / M-Pesa / card / credit)
+- Estimated COGS + gross profit (from unit costs on sale lines)
+- Expenses
+- Stock value at cost
+- Debtors & creditors totals
 
-## Full test checklist (when ready)
+**Share PDF** / preview icons export a single offline business report (A4).
 
-- [ ] Stock / products  
-- [ ] POS cash + quick sale + credit  
+## Full test checklist
+
+- [ ] Stock / POS / quick sale / credit  
 - [ ] Debtors repay  
-- [ ] Receive goods + pay supplier  
+- [ ] Receive goods / pay supplier  
 - [ ] Expense + close day  
+- [ ] Reports on screen + Share PDF  
 
 ## Roadmap
 
-1. ~~POS, debtors, creditors~~  
-2. ~~Expenses + closing~~  
-3. Reports + PDF  
-4. Offline assistant  
-5. Business profiles  
+1. ~~Core trading modules~~  
+2. ~~Reports + PDF~~  
+3. Offline assistant (rule-based Q&A)  
+4. Business profiles (duka, mama mboga, …)  

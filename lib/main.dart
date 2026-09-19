@@ -5,6 +5,7 @@ import 'features/customers/customers_page.dart';
 import 'features/dashboard/dashboard_page.dart';
 import 'features/inventory/inventory_page.dart';
 import 'features/pos/pos_page.dart';
+import 'features/reports/reports_page.dart';
 import 'features/suppliers/suppliers_page.dart';
 
 Future<void> main() async {
@@ -55,10 +56,7 @@ class _AppShellState extends State<AppShell> {
       const InventoryPage(),
       const CustomersPage(),
       const SuppliersPage(),
-      const _PlaceholderPage(
-        icon: Icons.bar_chart_outlined,
-        title: 'Reports',
-      ),
+      const ReportsPage(),
       const _PlaceholderPage(
         icon: Icons.auto_awesome_outlined,
         title: 'Assistant',
