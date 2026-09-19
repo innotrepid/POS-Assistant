@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/inventory_service.dart';
 import '../../services/sales_service.dart';
@@ -10,8 +11,17 @@ import 'sales_history_page.dart';
 
 class PosPage extends StatefulWidget {
   final VoidCallback? onSaleCompleted;
+  final VoidCallback? onOpenAssistant;
+  final VoidCallback? onOpenNotifications;
+  final int unreadCount;
 
-  const PosPage({super.key, this.onSaleCompleted});
+  const PosPage({
+    super.key,
+    this.onSaleCompleted,
+    this.onOpenAssistant,
+    this.onOpenNotifications,
+    this.unreadCount = 0,
+  });
 
   @override
   State<PosPage> createState() => _PosPageState();
@@ -87,32 +97,34 @@ class _PosPageState extends State<PosPage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Quick sale'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Does not affect inventory. Use for items not in the catalogue.',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Item name'),
-                autofocus: true,
-              ),
-              TextField(
-                controller: priceCtrl,
-                decoration: const InputDecoration(labelText: 'Price'),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-              ),
-              TextField(
-                controller: qtyCtrl,
-                decoration: const InputDecoration(labelText: 'Quantity'),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Does not affect inventory. Use for items not in the catalogue.',
+                  style: TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Item name'),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: priceCtrl,
+                  decoration: const InputDecoration(labelText: 'Price'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: qtyCtrl,
+                  decoration: const InputDecoration(labelText: 'Quantity'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -174,9 +186,7 @@ class _PosPageState extends State<PosPage> {
           onPressed: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => SalesHistoryPage(
-                  highlightSaleId: result.saleId,
-                ),
+                builder: (_) => SalesHistoryPage(highlightSaleId: result.saleId),
               ),
             );
           },
@@ -188,9 +198,31 @@ class _PosPageState extends State<PosPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Point of Sale'),
+        title: Text(
+          'POS',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
         actions: [
+          if (widget.onOpenNotifications != null)
+            IconButton(
+              tooltip: 'Notifications',
+              onPressed: widget.onOpenNotifications,
+              icon: Badge(
+                isLabelVisible: widget.unreadCount > 0,
+                label: Text('${widget.unreadCount}'),
+                child: const Icon(Icons.notifications_outlined),
+              ),
+            ),
+          if (widget.onOpenAssistant != null)
+            IconButton(
+              tooltip: 'Assistant',
+              icon: const Icon(Icons.auto_awesome),
+              onPressed: widget.onOpenAssistant,
+            ),
           IconButton(
             tooltip: 'Quick sale',
             icon: const Icon(Icons.flash_on),
@@ -212,37 +244,37 @@ class _PosPageState extends State<PosPage> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search name, barcode, or SKU',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          _loadProducts();
-                        },
-                      ),
-                border: const OutlineInputBorder(),
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+            child: GlassPanel(
+              borderRadius: 16,
+              padding: EdgeInsets.zero,
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search name, barcode, or SKU',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            _loadProducts();
+                          },
+                        ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                textInputAction: TextInputAction.search,
+                onChanged: (value) => _loadProducts(query: value),
+                onSubmitted: (value) => _loadProducts(query: value),
               ),
-              textInputAction: TextInputAction.search,
-              onChanged: (value) => _loadProducts(query: value),
-              onSubmitted: (value) => _loadProducts(query: value),
             ),
           ),
-          Expanded(
-            flex: 3,
-            child: _buildProductList(),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            flex: 2,
-            child: _buildCartPanel(),
-          ),
+          Expanded(flex: 3, child: _buildProductList()),
+          Expanded(flex: 2, child: _buildCartPanel()),
         ],
       ),
     );
@@ -254,8 +286,8 @@ class _PosPageState extends State<PosPage> {
     }
     if (_error != null) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -271,116 +303,156 @@ class _PosPageState extends State<PosPage> {
       );
     }
     if (_products.isEmpty) {
-      return const Center(
-        child: Text(
-          'No products yet.\nAdd stock under the Stock tab,\nor use the flash icon for a quick sale.',
-          textAlign: TextAlign.center,
+      return Center(
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
+          child: Text(
+            'No products yet.\nAdd stock under the Stock tab,\nor use the flash icon for a quick sale.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
         ),
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       itemCount: _products.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final product = _products[index];
         final stock = _stockByProduct[product.id] ?? 0;
         final outOfStock = stock <= 0;
 
-        return ListTile(
-          title: Text(product.name),
-          subtitle: Text(
-            '${Money.format(product.sellingPrice)} · Stock: ${_fmtQty(stock)}',
+        return GlassPanel(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          borderRadius: 16,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              '${Money.format(product.sellingPrice)} · Stock: ${_fmtQty(stock)}',
+            ),
+            trailing: IconButton(
+              icon: Icon(
+                Icons.add_shopping_cart,
+                color: outOfStock
+                    ? Theme.of(context).disabledColor
+                    : Theme.of(context).colorScheme.primary,
+              ),
+              onPressed: outOfStock ? null : () => _cart.addProduct(product),
+            ),
+            onTap: outOfStock ? null : () => _cart.addProduct(product),
           ),
-          trailing: IconButton(
-            icon: const Icon(Icons.add_shopping_cart),
-            onPressed: outOfStock ? null : () => _cart.addProduct(product),
-          ),
-          onTap: outOfStock ? null : () => _cart.addProduct(product),
         );
       },
     );
   }
 
   Widget _buildCartPanel() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: Row(
+    return GlassPanel(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      borderRadius: 24,
+      accent: !_cart.isEmpty,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: Column(
+        children: [
+          Row(
             children: [
               Text(
-                'Cart',
-                style: Theme.of(context).textTheme.titleMedium,
+                'CART',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.4,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
               const Spacer(),
               if (!_cart.isEmpty)
-                TextButton(
-                  onPressed: _cart.clear,
-                  child: const Text('Clear'),
-                ),
+                TextButton(onPressed: _cart.clear, child: const Text('Clear')),
             ],
           ),
-        ),
-        Expanded(
-          child: _cart.isEmpty
-              ? const Center(child: Text('Tap products or use Quick sale'))
-              : ListView.builder(
-                  itemCount: _cart.lines.length,
-                  itemBuilder: (context, index) {
-                    final line = _cart.lines[index];
-                    return ListTile(
-                      dense: true,
-                      title: Text(
-                        line.isQuickSale ? '${line.name} (quick)' : line.name,
-                      ),
-                      subtitle: Text(
-                        '${_fmtQty(line.quantity)} × ${Money.format(line.unitPrice)}',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle_outline),
-                            onPressed: () {
-                              _cart.setQuantity(
-                                line.lineKey,
-                                line.quantity - 1,
-                              );
-                            },
+          Expanded(
+            child: _cart.isEmpty
+                ? Center(
+                    child: Text(
+                      'Tap products or use Quick sale',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
-                          Text(_fmtQty(line.quantity)),
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () {
-                              _cart.setQuantity(
-                                line.lineKey,
-                                line.quantity + 1,
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            Money.format(line.lineTotal),
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _cart.lines.length,
+                    itemBuilder: (context, index) {
+                      final line = _cart.lines[index];
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          line.isQuickSale ? '${line.name} (quick)' : line.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          '${_fmtQty(line.quantity)} × ${Money.format(line.unitPrice)}',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline),
+                              onPressed: () {
+                                _cart.setQuantity(line.lineKey, line.quantity - 1);
+                              },
+                            ),
+                            Text(
+                              _fmtQty(line.quantity),
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline),
+                              onPressed: () {
+                                _cart.setQuantity(line.lineKey, line.quantity + 1);
+                              },
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              Money.format(line.lineTotal),
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          SafeArea(
+            top: false,
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    'Total ${Money.format(_cart.subtotal)}',
-                    style: Theme.of(context).textTheme.titleLarge,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'TOTAL',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Text(
+                        Money.format(_cart.subtotal),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                    ],
                   ),
                 ),
                 FilledButton.icon(
@@ -391,8 +463,8 @@ class _PosPageState extends State<PosPage> {
               ],
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

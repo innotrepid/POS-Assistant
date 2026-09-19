@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 
 import '../../services/security_service.dart';
 
-/// Full-screen lock until PIN or biometric succeeds.
 class LockScreen extends StatefulWidget {
   final VoidCallback onUnlocked;
 
@@ -46,7 +45,7 @@ class _LockScreenState extends State<LockScreen> {
       _error = null;
     });
     final ok = await _security.authenticateBiometric(
-      reason: 'Unlock POS Assistant',
+      reason: 'Unlock Mercate',
     );
     if (!mounted) return;
     if (ok) {
@@ -89,14 +88,18 @@ class _LockScreenState extends State<LockScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.lock_outline,
-                    size: 64,
-                    color: Theme.of(context).colorScheme.primary,
+                  Image.asset(
+                    'assets/images/mercate_logo.png',
+                    height: 72,
+                    errorBuilder: (_, __, ___) => Icon(
+                      Icons.lock_outline,
+                      size: 64,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'POS Assistant',
+                    'Mercate',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 8),
@@ -150,7 +153,6 @@ class _LockScreenState extends State<LockScreen> {
   }
 }
 
-/// Modal PIN prompt for sensitive actions.
 Future<bool> promptPinDialog(
   BuildContext context, {
   String title = 'Enter PIN',

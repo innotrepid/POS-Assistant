@@ -10,7 +10,9 @@ class _ChatMessage {
 }
 
 class AssistantPage extends StatefulWidget {
-  const AssistantPage({super.key});
+  final String? initialQuestion;
+
+  const AssistantPage({super.key, this.initialQuestion});
 
   @override
   State<AssistantPage> createState() => _AssistantPageState();
@@ -23,13 +25,22 @@ class _AssistantPageState extends State<AssistantPage> {
   final List<_ChatMessage> _messages = [
     const _ChatMessage(
       text:
-          'Hi — I am your offline shop assistant.\n'
+          'Hi — I am the Mercate offline assistant.\n'
           'Ask about today’s sales, who owes you, low stock, '
-          'or how each part of the app works.',
+          'business profiles, or how each part works.',
       fromUser: false,
     ),
   ];
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final q = widget.initialQuestion;
+    if (q != null && q.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _send(q));
+    }
+  }
 
   @override
   void dispose() {
@@ -83,12 +94,12 @@ class _AssistantPageState extends State<AssistantPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Assistant'),
+        title: const Text('Mercate Assistant'),
         actions: [
           IconButton(
-            tooltip: 'How the app works',
+            tooltip: 'How Mercate works',
             icon: const Icon(Icons.info_outline),
-            onPressed: () => _send('How does this app work?'),
+            onPressed: () => _send('How does Mercate work?'),
           ),
         ],
       ),
@@ -152,7 +163,7 @@ class _AssistantPageState extends State<AssistantPage> {
                     child: TextField(
                       controller: _controller,
                       decoration: const InputDecoration(
-                        hintText: 'Ask about sales, stock, or the app…',
+                        hintText: 'Ask about sales, stock, profiles…',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),

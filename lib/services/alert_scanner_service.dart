@@ -4,9 +4,8 @@ import 'debtor_service.dart';
 import 'inventory_service.dart';
 import 'notification_service.dart';
 import 'policy_service.dart';
-import 'system_notification_service.dart';
 
-/// Scans stock and debt; writes in-app notifications and optional system tray alerts.
+/// Scans stock and debt; writes in-app notifications only (no system tray).
 class AlertScannerService {
   AlertScannerService({
     InventoryService? inventory,
@@ -55,17 +54,7 @@ class AlertScannerService {
           entityId: product.id,
           dedupeKey: outKey,
         );
-        if (isNew) {
-          created++;
-          await _systemNotify(
-            id: product.id.hashCode &
-                0x7fffffff,
-            category: 'inventory',
-            priority: 'critical',
-            title: 'Out of stock',
-            body: '${product.name} has no stock left.',
-          );
-        }
+        if (isNew) created++;
         await _notifications.markReadByDedupeKey(lowKey);
       } else if (min > 0 && stock <= min) {
         final isNew = await _notifications.pushIfNew(
@@ -79,16 +68,7 @@ class AlertScannerService {
           entityId: product.id,
           dedupeKey: lowKey,
         );
-        if (isNew) {
-          created++;
-          await _systemNotify(
-            id: (product.id.hashCode ^ 0x1111) & 0x7fffffff,
-            category: 'inventory',
-            priority: 'warning',
-            title: 'Low stock',
-            body: '${product.name}: $stock left (min ${_fmt(min)}).',
-          );
-        }
+        if (isNew) created++;
         await _notifications.markReadByDedupeKey(outKey);
       } else {
         await _notifications.markReadByDedupeKey(outKey);
@@ -108,7 +88,6 @@ class AlertScannerService {
     for (final d in list) {
       if (d.balance <= 0.001) continue;
 
-      // Oldest open credit sale for this customer
       final open = await db.query(
         'sales',
         where:
@@ -120,7 +99,8 @@ class AlertScannerService {
 
       var daysOpen = 0;
       if (open.isNotEmpty) {
-        final createdAt = DateTime.tryParse(open.first['created_at'] as String? ?? '');
+        final createdAt =
+            DateTime.tryParse(open.first['created_at'] as String? ?? '');
         if (createdAt != null) {
           daysOpen = DateTime.now().difference(createdAt).inDays;
         }
@@ -147,17 +127,7 @@ class AlertScannerService {
           entityId: d.customerId,
           dedupeKey: key,
         );
-        if (isNew) {
-          created++;
-          await _systemNotify(
-            id: (d.customerId.hashCode ^ 0x2222) & 0x7fffffff,
-            category: 'debt',
-            priority: 'warning',
-            title: 'Overdue debt',
-            body:
-                '${d.customerName}: ${Money.format(d.balance)} ($daysOpen days)',
-          );
-        }
+        if (isNew) created++;
       } else {
         await _notifications.markReadByDedupeKey(
           'debt_overdue_${d.customerId}',
@@ -177,22 +147,6 @@ class AlertScannerService {
     }
 
     return created;
-  }
-
-  Future<void> _systemNotify({
-    required int id,
-    required String category,
-    required String priority,
-    required String title,
-    required String body,
-  }) async {
-    await SystemNotificationService.instance.show(
-      id: id,
-      category: category,
-      priority: priority,
-      title: title,
-      body: body,
-    );
   }
 
   String _fmt(double v) {

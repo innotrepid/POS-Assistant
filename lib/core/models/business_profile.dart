@@ -1,5 +1,4 @@
 /// Business profiles = UX configuration over one shared engine.
-/// More capable profiles expose more of the same underlying system.
 
 enum BusinessProfileId {
   mamaMboga,
@@ -28,7 +27,6 @@ enum InterfaceLevel {
   full,
 }
 
-/// Feature flags — engine always has the capability; UI decides visibility.
 class ProfileFeatures {
   final bool sales;
   final bool stock;
@@ -51,6 +49,7 @@ class ProfileFeatures {
   final bool multiUser;
   final bool branches;
   final bool advancedAudit;
+  final bool produceUnits;
 
   const ProfileFeatures({
     this.sales = true,
@@ -74,9 +73,11 @@ class ProfileFeatures {
     this.multiUser = false,
     this.branches = false,
     this.advancedAudit = false,
+    this.produceUnits = false,
   });
 
-  static const simpleCore = ProfileFeatures(
+  /// Mama mboga — focused produce shop (no suppliers tab).
+  static const mamaMboga = ProfileFeatures(
     sales: true,
     stock: true,
     customers: true,
@@ -90,6 +91,21 @@ class ProfileFeatures {
     splitPayments: false,
     barcodes: false,
     categories: false,
+    weightSales: true,
+    produceUnits: true,
+  );
+
+  static const simpleCore = ProfileFeatures(
+    sales: true,
+    stock: true,
+    customers: true,
+    suppliers: false,
+    reports: true,
+    expenses: true,
+    dayClose: true,
+    discounts: true,
+    creditSales: true,
+    mpesa: true,
   );
 
   static const simplePlus = ProfileFeatures(
@@ -195,6 +211,7 @@ class BusinessProfile {
   final String label;
   final String description;
   final String defaultUnit;
+  final List<String> suggestedUnits;
   final InterfaceLevel interfaceLevel;
   final ProfileFeatures features;
   final bool defaultTrackBatches;
@@ -206,6 +223,7 @@ class BusinessProfile {
     required this.label,
     required this.description,
     required this.defaultUnit,
+    this.suggestedUnits = const ['piece'],
     required this.interfaceLevel,
     required this.features,
     this.defaultTrackBatches = false,
@@ -213,17 +231,17 @@ class BusinessProfile {
     this.enabled = true,
   });
 
-  /// Progressive capability ladder — same engine, different exposure.
   static const List<BusinessProfile> all = [
     BusinessProfile(
       id: BusinessProfileId.mamaMboga,
       label: 'Mama mboga / fresh produce',
       description:
-          'Focused shop tools: sell, stock, prices, customers, cash/M-Pesa, '
-          'debts, discounts, daily sales, low-stock alerts.',
+          'Sell by kg, bunch, heap or piece. Stock, cash, M-Pesa, customer '
+          'credit and day close — no supplier clutter.',
       defaultUnit: 'kg',
+      suggestedUnits: ['kg', 'bunch', 'heap', 'piece', 'bag', 'dozen'],
       interfaceLevel: InterfaceLevel.simple,
-      features: ProfileFeatures.simpleCore,
+      features: ProfileFeatures.mamaMboga,
     ),
     BusinessProfile(
       id: BusinessProfileId.duka,
@@ -232,6 +250,7 @@ class BusinessProfile {
           'Everything in simple, plus categories, barcodes, suppliers, '
           'basic profit, stock adjustments, customer accounts.',
       defaultUnit: 'piece',
+      suggestedUnits: ['piece', 'pack', 'dozen'],
       interfaceLevel: InterfaceLevel.simplePlus,
       features: ProfileFeatures.simplePlus,
     ),
@@ -252,9 +271,9 @@ class BusinessProfile {
           'Weight-based sales, portions, wastage, purchase cost, margins, '
           'suppliers and customer debt.',
       defaultUnit: 'kg',
+      suggestedUnits: ['kg', 'piece', 'portion'],
       interfaceLevel: InterfaceLevel.operational,
       features: ProfileFeatures.operational,
-      enabled: true,
     ),
     BusinessProfile(
       id: BusinessProfileId.restaurant,
@@ -265,7 +284,6 @@ class BusinessProfile {
       defaultUnit: 'portion',
       interfaceLevel: InterfaceLevel.operational,
       features: ProfileFeatures.operational,
-      enabled: true,
     ),
     BusinessProfile(
       id: BusinessProfileId.pharmacy,
@@ -277,7 +295,6 @@ class BusinessProfile {
       features: ProfileFeatures.controlled,
       defaultTrackBatches: true,
       defaultHasExpiry: true,
-      enabled: true,
     ),
     BusinessProfile(
       id: BusinessProfileId.hardware,
@@ -287,7 +304,6 @@ class BusinessProfile {
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.operationalPlus,
       features: ProfileFeatures.advanced,
-      enabled: true,
     ),
     BusinessProfile(
       id: BusinessProfileId.clothing,
@@ -297,7 +313,6 @@ class BusinessProfile {
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.operational,
       features: ProfileFeatures.advanced,
-      enabled: true,
     ),
     BusinessProfile(
       id: BusinessProfileId.electronics,
@@ -307,7 +322,6 @@ class BusinessProfile {
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.advanced,
       features: ProfileFeatures.advanced,
-      enabled: true,
     ),
     BusinessProfile(
       id: BusinessProfileId.wholesale,
@@ -317,7 +331,6 @@ class BusinessProfile {
       defaultUnit: 'carton',
       interfaceLevel: InterfaceLevel.advanced,
       features: ProfileFeatures.advanced,
-      enabled: true,
     ),
     BusinessProfile(
       id: BusinessProfileId.supermarket,
@@ -327,7 +340,6 @@ class BusinessProfile {
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.advanced,
       features: ProfileFeatures.full,
-      enabled: true,
     ),
     BusinessProfile(
       id: BusinessProfileId.multiBranch,
@@ -347,7 +359,6 @@ class BusinessProfile {
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.full,
       features: ProfileFeatures.full,
-      enabled: true,
     ),
   ];
 
@@ -360,7 +371,6 @@ class BusinessProfile {
     for (final p in all) {
       if (p.id.name == raw) return p;
     }
-    // Legacy id from earlier versions
     if (raw == 'miniMarket') {
       return byId(BusinessProfileId.kiosk);
     }
@@ -368,7 +378,6 @@ class BusinessProfile {
   }
 }
 
-/// Actionable copy — translate engine facts into operator language.
 class ProfileCopy {
   static String stockLeft(String name, double qty, String unit) {
     final q = qty == qty.truncateToDouble()

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../main.dart' show themeController;
 import '../../services/policy_service.dart';
 import '../../services/security_service.dart';
 
@@ -121,14 +122,81 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
     }
   }
 
+  String _themeLabel(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'Light';
+      case ThemeMode.dark:
+        return 'Dark';
+      case ThemeMode.system:
+        return 'System';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings & security')),
+      appBar: AppBar(title: const Text('Settings')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
+                const ListTile(
+                  title: Text('Appearance'),
+                  subtitle: Text('Glass UI · teal accent'),
+                ),
+                ListenableBuilder(
+                  listenable: themeController,
+                  builder: (context, _) {
+                    final mode = themeController.mode;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: SegmentedButton<ThemeMode>(
+                        segments: const [
+                          ButtonSegment(
+                            value: ThemeMode.system,
+                            label: Text('System'),
+                            icon: Icon(Icons.brightness_auto, size: 18),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.light,
+                            label: Text('Light'),
+                            icon: Icon(Icons.light_mode, size: 18),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.dark,
+                            label: Text('Dark'),
+                            icon: Icon(Icons.dark_mode, size: 18),
+                          ),
+                        ],
+                        selected: {mode},
+                        onSelectionChanged: (set) {
+                          themeController.setMode(set.first);
+                        },
+                      ),
+                    );
+                  },
+                ),
+                ListenableBuilder(
+                  listenable: themeController,
+                  builder: (context, _) {
+                    return ListTile(
+                      title: const Text('Theme'),
+                      subtitle: Text(_themeLabel(themeController.mode)),
+                      trailing: Icon(
+                        themeController.mode == ThemeMode.dark
+                            ? Icons.dark_mode
+                            : themeController.mode == ThemeMode.light
+                                ? Icons.light_mode
+                                : Icons.brightness_auto,
+                      ),
+                    );
+                  },
+                ),
+                const Divider(),
                 const ListTile(
                   title: Text('App lock'),
                   subtitle: Text(
@@ -248,7 +316,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                   onTap: () {
                     showLicensePage(
                       context: context,
-                      applicationName: 'POS Assistant',
+                      applicationName: 'Mercate',
                       applicationVersion: '0.1.0',
                     );
                   },
