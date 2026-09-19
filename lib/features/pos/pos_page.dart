@@ -75,6 +75,73 @@ class _PosPageState extends State<PosPage> {
     }
   }
 
+  Future<void> _addQuickSale() async {
+    final nameCtrl = TextEditingController();
+    final priceCtrl = TextEditingController();
+    final qtyCtrl = TextEditingController(text: '1');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Quick sale'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Does not affect inventory. Use for items not in the catalogue.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Item name'),
+                autofocus: true,
+              ),
+              TextField(
+                controller: priceCtrl,
+                decoration: const InputDecoration(labelText: 'Price'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+              ),
+              TextField(
+                controller: qtyCtrl,
+                decoration: const InputDecoration(labelText: 'Quantity'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Add to cart'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (ok != true) return;
+
+    final name = nameCtrl.text.trim();
+    final price = Money.parse(priceCtrl.text);
+    final qty = Money.parse(qtyCtrl.text);
+    if (name.isEmpty || price < 0 || qty <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid name, price, and quantity')),
+      );
+      return;
+    }
+
+    _cart.addQuickSale(name: name, unitPrice: price, quantity: qty);
+  }
+
   Future<void> _openCheckout() async {
     if (_cart.isEmpty) return;
 
@@ -120,6 +187,11 @@ class _PosPageState extends State<PosPage> {
       appBar: AppBar(
         title: const Text('Point of Sale'),
         actions: [
+          IconButton(
+            tooltip: 'Quick sale',
+            icon: const Icon(Icons.flash_on),
+            onPressed: _addQuickSale,
+          ),
           IconButton(
             tooltip: 'Sales history',
             icon: const Icon(Icons.history),
@@ -197,7 +269,7 @@ class _PosPageState extends State<PosPage> {
     if (_products.isEmpty) {
       return const Center(
         child: Text(
-          'No products yet.\nAdd stock under the Stock tab first.',
+          'No products yet.\nAdd stock under the Stock tab,\nor use the flash icon for a quick sale.',
           textAlign: TextAlign.center,
         ),
       );
@@ -219,9 +291,7 @@ class _PosPageState extends State<PosPage> {
           ),
           trailing: IconButton(
             icon: const Icon(Icons.add_shopping_cart),
-            onPressed: outOfStock
-                ? null
-                : () => _cart.addProduct(product),
+            onPressed: outOfStock ? null : () => _cart.addProduct(product),
           ),
           onTap: outOfStock ? null : () => _cart.addProduct(product),
         );
@@ -251,14 +321,16 @@ class _PosPageState extends State<PosPage> {
         ),
         Expanded(
           child: _cart.isEmpty
-              ? const Center(child: Text('Tap products to add'))
+              ? const Center(child: Text('Tap products or use Quick sale'))
               : ListView.builder(
                   itemCount: _cart.lines.length,
                   itemBuilder: (context, index) {
                     final line = _cart.lines[index];
                     return ListTile(
                       dense: true,
-                      title: Text(line.product.name),
+                      title: Text(
+                        line.isQuickSale ? '${line.name} (quick)' : line.name,
+                      ),
                       subtitle: Text(
                         '${_fmtQty(line.quantity)} × ${Money.format(line.unitPrice)}',
                       ),
@@ -269,7 +341,7 @@ class _PosPageState extends State<PosPage> {
                             icon: const Icon(Icons.remove_circle_outline),
                             onPressed: () {
                               _cart.setQuantity(
-                                line.product.id,
+                                line.lineKey,
                                 line.quantity - 1,
                               );
                             },
@@ -279,7 +351,7 @@ class _PosPageState extends State<PosPage> {
                             icon: const Icon(Icons.add_circle_outline),
                             onPressed: () {
                               _cart.setQuantity(
-                                line.product.id,
+                                line.lineKey,
                                 line.quantity + 1,
                               );
                             },

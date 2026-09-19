@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../core/models/customer.dart';
 import '../../core/utils/money.dart';
 import '../../services/sales_service.dart';
 import 'cart_controller.dart';
+import 'customer_picker_sheet.dart';
 
 class CheckoutResult {
   final String saleId;
@@ -34,8 +36,8 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   String _paymentType = 'cash';
   final _paidController = TextEditingController();
   final _referenceController = TextEditingController();
-  final _customerIdController = TextEditingController();
   final _discountController = TextEditingController(text: '0');
+  Customer? _customer;
   bool _submitting = false;
   String? _error;
 
@@ -48,6 +50,12 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     return t < 0 ? 0 : t;
   }
 
+  bool get _needsCustomer {
+    if (_paymentType == 'credit') return true;
+    final paid = Money.parse(_paidController.text);
+    return paid < _total;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -58,9 +66,15 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   void dispose() {
     _paidController.dispose();
     _referenceController.dispose();
-    _customerIdController.dispose();
     _discountController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickCustomer() async {
+    final selected = await showCustomerPicker(context);
+    if (selected != null && mounted) {
+      setState(() => _customer = selected);
+    }
   }
 
   Future<void> _submit() async {
@@ -72,23 +86,27 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     try {
       final paid = Money.parse(_paidController.text);
       final discount = Money.parse(_discountController.text);
-      final customerId = _customerIdController.text.trim();
+
+      if (_needsCustomer && _customer == null) {
+        throw ArgumentError('Select a customer for credit or partial payment.');
+      }
 
       final items = widget.cart.lines
           .map(
             (line) => SaleLineInput(
-              productId: line.product.id,
-              productName: line.product.name,
+              productId: line.isQuickSale ? null : line.product?.id,
+              productName: line.name,
               quantity: line.quantity,
               unitPrice: line.unitPrice,
-              unitCost: line.product.costPrice,
+              unitCost: line.isQuickSale ? null : line.product?.costPrice,
               discount: line.discount,
+              isQuickSale: line.isQuickSale,
             ),
           )
           .toList();
 
       final saleId = await widget.salesService.createSale(
-        customerId: customerId.isEmpty ? null : customerId,
+        customerId: _customer?.id,
         items: items,
         paidAmount: paid,
         discount: discount,
@@ -183,6 +201,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 border: OutlineInputBorder(),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
             ),
             if (_paymentType == 'mpesa') ...[
               const SizedBox(height: 12),
@@ -194,16 +213,20 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 ),
               ),
             ],
-            if (_paymentType == 'credit' ||
-                Money.parse(_paidController.text) < _total) ...[
+            if (_needsCustomer) ...[
               const SizedBox(height: 12),
-              TextField(
-                controller: _customerIdController,
-                decoration: const InputDecoration(
-                  labelText: 'Customer ID (required for credit)',
-                  helperText: 'Paste customer UUID for now — picker comes later',
-                  border: OutlineInputBorder(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  _customer == null
+                      ? 'Select customer'
+                      : _customer!.name,
                 ),
+                subtitle: _customer?.phone == null
+                    ? const Text('Required for credit / balance')
+                    : Text(_customer!.phone!),
+                trailing: const Icon(Icons.person_search),
+                onTap: _pickCustomer,
               ),
             ],
             if (_error != null) ...[

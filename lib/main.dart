@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'core/database/app_database.dart';
+import 'features/customers/customers_page.dart';
 import 'features/inventory/inventory_page.dart';
 import 'features/pos/pos_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize database (only in real app runs)
   try {
     await AppDatabase.instance.database;
   } catch (_) {
@@ -54,10 +54,7 @@ class _AppShellState extends State<AppShell> {
       ),
       const PosPage(),
       const InventoryPage(),
-      const _PlaceholderPage(
-        icon: Icons.people_outline,
-        title: 'Customers',
-      ),
+      const CustomersPage(),
       const _PlaceholderPage(
         icon: Icons.local_shipping_outlined,
         title: 'Suppliers',
@@ -77,9 +74,7 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
-          setState(() {
-            selectedIndex = index;
-          });
+          setState(() => selectedIndex = index);
         },
         destinations: const [
           NavigationDestination(
@@ -141,10 +136,7 @@ class _PlaceholderPage extends StatelessWidget {
           children: [
             Icon(icon, size: 72),
             const SizedBox(height: 20),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+            Text(title, style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 8),
             const Text('Module ready for implementation'),
           ],
