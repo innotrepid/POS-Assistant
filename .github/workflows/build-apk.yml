@@ -1,25 +1,24 @@
 name: Build APK
 
 on:
-  # Manual button in Actions tab
   workflow_dispatch:
     inputs:
       build_type:
-        description: 'APK type'
+        description: "APK type"
         required: true
-        default: 'release'
+        default: release
         type: choice
         options:
           - release
           - debug
-  # Optional: still auto-build on foundation code changes
   push:
-    branches: [foundation]
+    branches:
+      - foundation
     paths:
-      - 'lib/**'
-      - 'pubspec.yaml'
-      - 'pubspec.lock'
-      - '.github/workflows/build-apk.yml'
+      - "lib/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/build-apk.yml"
 
 concurrency:
   group: build-apk-${{ github.ref }}
@@ -27,7 +26,7 @@ concurrency:
 
 jobs:
   apk:
-    name: Build ${{ github.event.inputs.build_type || 'release' }} APK
+    name: Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -39,7 +38,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -51,121 +50,99 @@ jobs:
         run: flutter --version
 
       - name: Generate Android platform files
-        run: |
-          flutter create . --project-name pos_assistant --org com.innotrepid --platforms=android
+        run: flutter create . --project-name pos_assistant --org com.innotrepid --platforms=android
 
-      - name: Patch AndroidManifest (biometrics + notifications)
+      - name: Patch AndroidManifest
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-          if ! grep -q "USE_BIOMETRIC" "$MANIFEST"; then
-            sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>\n    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
-          fi
-          if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
-            sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
-          fi
+          grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
+          grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
+          grep -q "POST_NOTIFICATIONS" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
 
       - name: Enable core library desugaring
         run: |
-          set -e
-          GRADLE="android/app/build.gradle"
-          if [ ! -f "$GRADLE" ]; then
-            GRADLE="android/app/build.gradle.kts"
-          fi
-          echo "Patching $GRADLE for desugaring..."
+          python3 - <<'PY'
+          from pathlib import Path
 
-          python3 << 'PY'
-from pathlib import Path
+          path = Path("android/app/build.gradle.kts")
+          if not path.exists():
+              path = Path("android/app/build.gradle")
+          if not path.exists():
+              raise SystemExit("No android/app/build.gradle(.kts) found")
 
-candidates = [
-    Path("android/app/build.gradle.kts"),
-    Path("android/app/build.gradle"),
-]
-path = next((p for p in candidates if p.exists()), None)
-if path is None:
-    raise SystemExit("No android/app/build.gradle(.kts) found")
+          text = path.read_text()
+          is_kts = path.name.endswith(".kts")
+          print(f"Patching {path} (kts={is_kts})")
 
-text = path.read_text()
-is_kts = path.suffix == ".kts"
-print(f"Using {path} (kts={is_kts})")
+          if is_kts:
+              if "isCoreLibraryDesugaringEnabled" not in text:
+                  if "compileOptions {" in text:
+                      text = text.replace(
+                          "compileOptions {",
+                          "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
+                          1,
+                      )
+                  else:
+                      text = text.replace(
+                          "android {",
+                          "android {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }",
+                          1,
+                      )
+              if "desugar_jdk_libs" not in text:
+                  dep = '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+                  if "dependencies {" in text:
+                      text = text.replace("dependencies {", "dependencies {\n" + dep, 1)
+                  else:
+                      text += "\n\ndependencies {\n" + dep + "}\n"
+          else:
+              if "coreLibraryDesugaringEnabled" not in text:
+                  if "compileOptions {" in text:
+                      text = text.replace(
+                          "compileOptions {",
+                          "compileOptions {\n        coreLibraryDesugaringEnabled true",
+                          1,
+                      )
+                  else:
+                      text = text.replace(
+                          "android {",
+                          "android {\n    compileOptions {\n        coreLibraryDesugaringEnabled true\n        sourceCompatibility JavaVersion.VERSION_1_8\n        targetCompatibility JavaVersion.VERSION_1_8\n    }",
+                          1,
+                      )
+              if "desugar_jdk_libs" not in text:
+                  dep = "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n"
+                  if "dependencies {" in text:
+                      text = text.replace("dependencies {", "dependencies {\n" + dep, 1)
+                  else:
+                      text += "\n\ndependencies {\n" + dep + "}\n"
 
-if is_kts:
-    if "isCoreLibraryDesugaringEnabled" not in text:
-        if "compileOptions {" in text:
-            text = text.replace(
-                "compileOptions {",
-                "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
-                1,
-            )
-        else:
-            text = text.replace(
-                "android {",
-                "android {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }",
-                1,
-            )
-    if "desugar_jdk_libs" not in text:
-        if "dependencies {" in text:
-            text = text.replace(
-                "dependencies {",
-                'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")',
-                1,
-            )
-        else:
-            text += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
-else:
-    if "coreLibraryDesugaringEnabled" not in text:
-        if "compileOptions {" in text:
-            text = text.replace(
-                "compileOptions {",
-                "compileOptions {\n        coreLibraryDesugaringEnabled true",
-                1,
-            )
-        else:
-            text = text.replace(
-                "android {",
-                "android {\n    compileOptions {\n        coreLibraryDesugaringEnabled true\n        sourceCompatibility JavaVersion.VERSION_1_8\n        targetCompatibility JavaVersion.VERSION_1_8\n    }",
-                1,
-            )
-    if "desugar_jdk_libs" not in text:
-        if "dependencies {" in text:
-            text = text.replace(
-                "dependencies {",
-                "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'",
-                1,
-            )
-        else:
-            text += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
-
-path.write_text(text)
-print("--- patched file ---")
-print(path.read_text())
-PY
+          path.write_text(text)
+          print(path.read_text())
+          PY
 
       - name: Get dependencies
         run: flutter pub get
 
       - name: Build APK
-        id: build
+        env:
+          BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
         run: |
-          TYPE="${{ github.event.inputs.build_type || 'release' }}"
-          echo "Building $TYPE APK..."
-          if [ "$TYPE" = "debug" ]; then
+          echo "Building ${BUILD_TYPE} APK..."
+          if [ "${BUILD_TYPE}" = "debug" ]; then
             flutter build apk --debug
           else
             flutter build apk --release
           fi
 
-      - name: Upload APK (success)
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: pos-assistant-apk
-          path: |
-            build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 14
 
-      # Always upload diagnostics so failed builds are downloadable
-      - name: Upload build diagnostics (always)
+      - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -174,9 +151,5 @@ PY
             android/app/build.gradle
             android/app/build.gradle.kts
             android/app/src/main/AndroidManifest.xml
-            android/gradle.properties
-            android/settings.gradle
-            android/settings.gradle.kts
-            build/app/outputs/**
           if-no-files-found: ignore
           retention-days: 7
