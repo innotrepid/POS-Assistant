@@ -1,14 +1,29 @@
 # POS-Assistant
 
-A Flutter-based Point of Sale (POS) Assistant application.
+Offline-first **business companion** for small shops: sales (POS), inventory, debtors, creditors, reports, and a local assistant.
 
-## Getting Started
+> Target user: a shop owner who currently uses a notebook, calculator, or memory for sales, stock, and credit.
 
-This project is the foundation for the POS Assistant app.
+## Status (`foundation` branch)
+
+| Layer | Status |
+|-------|--------|
+| SQLite schema + `AppDatabase` | Done |
+| Product model + money helpers | Done |
+| Inventory service (CRUD, stock ledger, WAC) | Done |
+| Sales service (transactional sale, stock, payments, debtors, audit) | Done |
+| Service tests (in-memory DB via `sqflite_common_ffi`) | Done |
+| **POS engine** (search, cart, pay, receipt, history) | **In progress** |
+| Inventory UI (add product / add stock) | Started |
+| Debtors / creditors UI | Not started |
+| Reports + PDF | Not started |
+| Offline assistant | Not started |
+
+## Getting started
 
 ### Prerequisites
 
-- Flutter SDK (3.0+)
+- Flutter SDK 3.0+
 - Dart SDK
 
 ### Setup
@@ -21,34 +36,77 @@ flutter pub get
 flutter run
 ```
 
-### Project Structure
+On a machine without mobile tooling yet, you can still validate:
 
-```
-POS-Assistant/
-├── .github/workflows/
-│   └── ci.yml             # GitHub Actions CI
-├── lib/
-│   └── main.dart          # App entry point
-├── test/
-│   └── widget_test.dart   # Basic tests
-├── pubspec.yaml           # Dependencies
-├── analysis_options.yaml  # Linter rules
-└── README.md
+```bash
+flutter analyze
+flutter test
 ```
 
-## Continuous Integration
+## How to try the POS flow
 
-GitHub Actions runs on every push and pull request to `main` and `foundation`:
+1. Open the **Stock** tab → tap **+** → add a product (name, selling price, optional cost + opening stock).
+2. Open the **POS** tab → search or tap products into the cart.
+3. Tap **Pay** → choose **cash / mpesa / card / credit** → complete sale.
+4. Use the history icon for **sales history** and **receipt** view.
 
-- Checkout code
-- Setup Flutter (stable)
+Credit sales need a customer ID for now (picker comes with the Debtors module).
+
+## Project structure
+
+```
+lib/
+├── core/
+│   ├── database/app_database.dart   # SQLite schema + in-memory factory for tests
+│   ├── models/product.dart
+│   └── utils/money.dart
+├── services/
+│   ├── inventory_service.dart
+│   └── sales_service.dart
+├── features/
+│   ├── pos/
+│   │   ├── cart_line.dart
+│   │   ├── cart_controller.dart
+│   │   ├── pos_page.dart
+│   │   ├── checkout_sheet.dart
+│   │   ├── receipt_page.dart
+│   │   └── sales_history_page.dart
+│   ├── inventory/inventory_page.dart
+│   ├── dashboard/ …
+│   ├── customers/ …
+│   ├── suppliers/ …
+│   ├── reports/ …
+│   ├── assistant/ …
+│   └── settings/ …
+└── main.dart
+```
+
+## Design principles
+
+- **Offline-first** — local SQLite is the source of truth.
+- **Every activity creates a record** — sales write stock movements, payments, debtor rows, and audit logs in one transaction.
+- **Stock is a ledger** — quantity is `SUM(stock_movements)`, not a single mutable field.
+- **Explainable money** — amounts go through `Money.round` / `Money.format`.
+
+## Continuous integration
+
+GitHub Actions on `main` and `foundation`:
+
 - `flutter pub get`
-- Format check (`dart format`)
-- Static analysis (`flutter analyze`)
-- Unit/widget tests (`flutter test`)
+- `dart format` (advisory)
+- `flutter analyze --fatal-infos`
+- `flutter test --coverage`
 
-Workflow file: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
-## Foundation Branch
+## Roadmap (short)
 
-This branch contains the initial Flutter project scaffolding.
+1. ~~Foundation services + tests~~
+2. **POS engine** ← current
+3. Debtors / creditors
+4. Reporting + PDF
+5. Offline business assistant (rule-based first)
+
+## License
+
+Private / unreleased — see repository owner for terms.

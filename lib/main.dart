@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'core/database/app_database.dart';
+import 'features/inventory/inventory_page.dart';
+import 'features/pos/pos_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,39 +45,33 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int selectedIndex = 0;
 
-  static const pages = [
-    _PlaceholderPage(
-      icon: Icons.dashboard_outlined,
-      title: 'Dashboard',
-    ),
-    _PlaceholderPage(
-      icon: Icons.point_of_sale_outlined,
-      title: 'Point of Sale',
-    ),
-    _PlaceholderPage(
-      icon: Icons.inventory_2_outlined,
-      title: 'Inventory',
-    ),
-    _PlaceholderPage(
-      icon: Icons.people_outline,
-      title: 'Customers',
-    ),
-    _PlaceholderPage(
-      icon: Icons.local_shipping_outlined,
-      title: 'Suppliers',
-    ),
-    _PlaceholderPage(
-      icon: Icons.bar_chart_outlined,
-      title: 'Reports',
-    ),
-    _PlaceholderPage(
-      icon: Icons.auto_awesome_outlined,
-      title: 'Assistant',
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final pages = <Widget>[
+      const _PlaceholderPage(
+        icon: Icons.dashboard_outlined,
+        title: 'Dashboard',
+      ),
+      const PosPage(),
+      const InventoryPage(),
+      const _PlaceholderPage(
+        icon: Icons.people_outline,
+        title: 'Customers',
+      ),
+      const _PlaceholderPage(
+        icon: Icons.local_shipping_outlined,
+        title: 'Suppliers',
+      ),
+      const _PlaceholderPage(
+        icon: Icons.bar_chart_outlined,
+        title: 'Reports',
+      ),
+      const _PlaceholderPage(
+        icon: Icons.auto_awesome_outlined,
+        title: 'Assistant',
+      ),
+    ];
+
     return Scaffold(
       body: pages[selectedIndex],
       bottomNavigationBar: NavigationBar(
