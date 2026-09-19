@@ -53,9 +53,8 @@ jobs:
         run: |
           flutter create . --project-name mercate --org com.aetherion --platforms=android
 
-      - name: Set applicationId and label
+      - name: Set applicationId, label, logo
         run: |
-          # Force applicationId for both Groovy and Kotlin DSL
           for f in android/app/build.gradle android/app/build.gradle.kts; do
             if [ -f "$f" ]; then
               sed -i 's/applicationId *= *".*"/applicationId = "com.aetherion.mercate"/' "$f" || true
@@ -70,12 +69,18 @@ jobs:
             grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
             grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
           fi
-          # Ensure assets folder exists for logo
           mkdir -p assets/images
-          if [ ! -f assets/images/mercate_logo.png ]; then
-            # 1x1 teal placeholder if logo missing
-            printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' | base64 -d > assets/images/mercate_logo.png
+          if [ -f assets/images/mercate_logo.b64 ]; then
+            base64 -d assets/images/mercate_logo.b64 > assets/images/mercate_logo.png
+            echo "Decoded mercate_logo.png from b64"
+          elif [ -d assets/images/logo_parts ]; then
+            cat assets/images/logo_parts/*.b64 | base64 -d > assets/images/mercate_logo.png || true
           fi
+          if [ ! -f assets/images/mercate_logo.png ] || [ ! -s assets/images/mercate_logo.png ]; then
+            printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' | base64 -d > assets/images/mercate_logo.png
+            echo "Used placeholder logo"
+          fi
+          ls -la assets/images/
 
       - name: Get dependencies
         run: flutter pub get
