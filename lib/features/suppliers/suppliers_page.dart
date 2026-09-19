@@ -73,6 +73,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                 decoration: const InputDecoration(labelText: 'Name'),
                 autofocus: true,
               ),
+              const SizedBox(height: 12),
               TextField(
                 controller: phoneCtrl,
                 decoration: const InputDecoration(labelText: 'Phone'),
@@ -113,14 +114,12 @@ class _SuppliersPageState extends State<SuppliersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(
           'Suppliers',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
               ),
         ),
         actions: [
@@ -149,9 +148,11 @@ class _SuppliersPageState extends State<SuppliersPage> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addSupplier,
-        child: const Icon(Icons.add),
+      floatingActionButton: RaisedFab(
+        child: FloatingActionButton(
+          onPressed: _addSupplier,
+          child: const Icon(Icons.add),
+        ),
       ),
       body: _buildBody(),
     );
@@ -220,8 +221,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                     color: scheme.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.local_shipping_outlined,
-                      color: scheme.primary),
+                  child: Icon(Icons.local_shipping_outlined, color: scheme.primary),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
