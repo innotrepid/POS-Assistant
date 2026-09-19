@@ -1,52 +1,42 @@
 # POS-Assistant
 
-Offline-first **business companion** for small shops: sales (POS), inventory, debtors, creditors, reports, and a local assistant.
+Offline-first **business companion** for small shops.
 
-> Target user: a shop owner who currently uses a notebook, calculator, or memory for sales, stock, and credit.
+## Status (`foundation`)
 
-## Status (`foundation` branch)
-
-| Layer | Status |
-|-------|--------|
-| SQLite schema + services | Done |
-| Inventory + Sales (transactional) | Done |
-| POS engine + quick sale | Done |
-| Customers + picker | Done |
-| **Debtors** (balance, repay, statement) | **Done** |
+| Module | Status |
+|--------|--------|
+| POS + inventory + quick sale | Done |
+| Customers + debtors (repay / statement) | Done |
+| **Suppliers + purchases + creditors** | **Done** |
 | APK via GitHub Actions | Done |
-| Creditors / purchases | Next |
+| Expenses + daily closing | Next |
 | Reports + PDF | Later |
 | Offline assistant | Later |
+| Business profiles | Later |
 
-## Install on your phone (no Android Studio)
+## Phone install
 
-1. Open **Actions** → workflow **Build APK**.
-2. Wait for the run to finish (or trigger **Run workflow** manually).
-3. Open the run → **Artifacts** → download **`pos-assistant-apk`**.
-4. Unzip → copy `app-release.apk` to your phone.
-5. Install (allow “unknown sources” if prompted).
+**Actions → Build APK** → artifact `pos-assistant-apk` → install `app-release.apk`.
 
-## Try debtors on device
+## Test creditors / purchases
 
-1. **POS** → sell on **credit** to a customer (creates debt).
-2. **Customers** → see “Owes …” on the list, or open the **wallet** icon for **Debtors**.
-3. Tap a customer → **statement** (credit sales + repayments).
-4. Tap **Repay** → cash / M-Pesa / card (cannot overpay).
-5. Balance and open sales update (FIFO against oldest unpaid sales).
+1. **Stock** → add products  
+2. **Suppliers** → **+** add supplier  
+3. Inbox icon **Receive goods** → supplier, lines (qty + unit cost), amount paid (0 = full credit)  
+4. Confirm → stock increases; if unpaid, supplier shows “We owe …”  
+5. Open supplier → **Pay** (partial/full)  
+6. Balance icon → **Creditors** list  
 
-## How to try POS
+## Test debtors (existing)
 
-1. **Stock** → add product + opening stock  
-2. **Customers** → add a customer  
-3. **POS** → catalogue or **quick sale** (flash icon) → **Pay**  
-4. History → receipt  
+POS credit sale → Customers / Debtors → Repay.
 
 ## Roadmap
 
-1. ~~Foundation + POS~~
-2. ~~Debtors~~
-3. Creditors / purchases
-4. Expenses + daily closing
-5. Reports + PDF
-6. Offline assistant
-7. Business profiles (duka → mama mboga → …)
+1. ~~POS + debtors~~  
+2. ~~Creditors + purchases~~  
+3. Expenses + daily closing  
+4. Reports + PDF  
+5. Offline assistant  
+6. Business profiles (duka, mama mboga, …)  

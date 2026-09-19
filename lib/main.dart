@@ -4,6 +4,7 @@ import 'core/database/app_database.dart';
 import 'features/customers/customers_page.dart';
 import 'features/inventory/inventory_page.dart';
 import 'features/pos/pos_page.dart';
+import 'features/suppliers/suppliers_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,10 +56,7 @@ class _AppShellState extends State<AppShell> {
       const PosPage(),
       const InventoryPage(),
       const CustomersPage(),
-      const _PlaceholderPage(
-        icon: Icons.local_shipping_outlined,
-        title: 'Suppliers',
-      ),
+      const SuppliersPage(),
       const _PlaceholderPage(
         icon: Icons.bar_chart_outlined,
         title: 'Reports',
