@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/day_closing_service.dart';
@@ -42,6 +44,13 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  String get _greeting {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
   }
 
   Future<void> _load() async {
@@ -306,18 +315,10 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Row(
-          children: [
-            Image.asset(
-              'assets/images/mercate_logo.png',
-              height: 28,
-              errorBuilder: (_, __, ___) => const Icon(Icons.store),
-            ),
-            const SizedBox(width: 8),
-            Expanded(child: Text(_shopName, overflow: TextOverflow.ellipsis)),
-          ],
-        ),
+        backgroundColor: Colors.transparent,
         actions: [
           if (widget.onOpenNotifications != null)
             IconButton(
@@ -370,8 +371,8 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     if (_error != null) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -385,81 +386,334 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     final s = _summary!;
+    final now = DateTime.now();
+    final dateLabel = DateFormat('EEEE, d MMM').format(now);
+    final topPad = MediaQuery.of(context).padding.top + kToolbarHeight - 8;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+      padding: EdgeInsets.fromLTRB(16, topPad, 16, 100),
       children: [
-        if (_profileLabel.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              _profileLabel,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
+        // Greeting + shop
         Text(
-          'Today · ${s.businessDate}',
-          style: Theme.of(context).textTheme.titleLarge,
+          _greeting,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                letterSpacing: 1.2,
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
         ),
-        const SizedBox(height: 12),
-        _tile('Sales', Money.format(s.salesTotal),
-            subtitle: '${s.saleCount} sales'),
-        _tile('Cash sales', Money.format(s.salesCash)),
-        _tile('M-Pesa sales', Money.format(s.salesMpesa)),
-        if (s.salesCard > 0) _tile('Card sales', Money.format(s.salesCard)),
-        _tile('Expenses', Money.format(s.expensesTotal)),
-        const SizedBox(height: 8),
-        if (s.isClosed)
-          const Chip(
-            avatar: Icon(Icons.lock, size: 18),
-            label: Text('Day closed'),
-          )
-        else
-          FilledButton.icon(
-            onPressed: _closeDay,
-            icon: const Icon(Icons.lock_clock),
-            label: const Text('Close day'),
-          ),
-        if (s.closing != null) ...[
-          const SizedBox(height: 8),
+        const SizedBox(height: 4),
+        Text(
+          _shopName,
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+                letterSpacing: -0.5,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          dateLabel,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        if (_profileLabel.isNotEmpty) ...[
+          const SizedBox(height: 6),
           Text(
-            'Counted cash ${Money.format((s.closing!['counted_cash'] as num).toDouble())} · '
-            'Expected ${Money.format((s.closing!['expected_cash'] as num).toDouble())}',
-            style: Theme.of(context).textTheme.bodySmall,
+            _profileLabel,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontStyle: FontStyle.italic,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
           ),
         ],
-        const Divider(height: 32),
-        Text(
-          "Today's expenses",
-          style: Theme.of(context).textTheme.titleMedium,
+        const SizedBox(height: 20),
+
+        // Hero sales glass
+        GlassPanel(
+          accent: true,
+          borderRadius: 28,
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'TODAY'S SALES',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.6,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (s.isClosed)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'CLOSED',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                Money.format(s.salesTotal),
+                style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1.5,
+                      height: 1.05,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                s.saleCount == 1
+                    ? '1 sale recorded'
+                    : '${s.saleCount} sales recorded',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(height: 14),
+
+        // Metric grid
+        Row(
+          children: [
+            Expanded(
+              child: _metricTile(
+                label: 'Cash',
+                value: Money.format(s.salesCash),
+                icon: Icons.payments_outlined,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _metricTile(
+                label: 'M-Pesa',
+                value: Money.format(s.salesMpesa),
+                icon: Icons.phone_android_outlined,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _metricTile(
+                label: 'Expenses',
+                value: Money.format(s.expensesTotal),
+                icon: Icons.trending_down,
+                warn: s.expensesTotal > 0,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _metricTile(
+                label: s.salesCard > 0 ? 'Card' : 'Net feel',
+                value: s.salesCard > 0
+                    ? Money.format(s.salesCard)
+                    : Money.format(s.salesTotal - s.expensesTotal),
+                icon: s.salesCard > 0
+                    ? Icons.credit_card_outlined
+                    : Icons.insights_outlined,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+
+        // Close day
+        GlassPanel(
+          borderRadius: 22,
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'End of day',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                s.isClosed
+                    ? 'Today is locked. Come back tomorrow.'
+                    : 'Count the till when you are done selling.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              if (s.closing != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Counted ${Money.format((s.closing!['counted_cash'] as num).toDouble())}  ·  '
+                  'Expected ${Money.format((s.closing!['expected_cash'] as num).toDouble())}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (!s.isClosed) ...[
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: _closeDay,
+                  icon: const Icon(Icons.lock_clock),
+                  label: const Text('Close day'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+
+        // Expenses section
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              'Expenses',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'today',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         if (_todayExpenses.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text('No expenses yet'),
+          GlassPanel(
+            child: Text(
+              'Nothing spent yet — tap Expense when you pay for something.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
           )
         else
           ..._todayExpenses.map((e) {
             final amount = (e['amount'] as num?)?.toDouble() ?? 0;
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(e['category'] as String? ?? ''),
-              subtitle: Text(e['description'] as String? ?? ''),
-              trailing: Text(Money.format(amount)),
+            return GlassPanel(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.receipt_long_outlined,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          e['category'] as String? ?? '',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        if ((e['description'] as String?)?.isNotEmpty == true)
+                          Text(
+                            e['description'] as String,
+                            style: Theme.of(context).textTheme.bodySmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    Money.format(amount),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
             );
           }),
       ],
     );
   }
 
-  Widget _tile(String label, String value, {String? subtitle}) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(label),
-      subtitle: subtitle == null ? null : Text(subtitle),
-      trailing: Text(
-        value,
-        style: const TextStyle(fontWeight: FontWeight.w600),
+  Widget _metricTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    bool warn = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return GlassPanel(
+      borderRadius: 20,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: warn ? scheme.error : scheme.primary,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }

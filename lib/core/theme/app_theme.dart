@@ -49,12 +49,12 @@ class AppTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      scaffoldBackgroundColor: scheme.surface,
+      scaffoldBackgroundColor: Colors.transparent,
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        backgroundColor: scheme.surface.withValues(alpha: isDark ? 0.72 : 0.85),
+        backgroundColor: Colors.transparent,
         foregroundColor: scheme.onSurface,
         surfaceTintColor: Colors.transparent,
       ),
@@ -74,7 +74,7 @@ class AppTheme {
         elevation: 0,
         height: 68,
         backgroundColor:
-            scheme.surfaceContainer.withValues(alpha: isDark ? 0.75 : 0.9),
+            scheme.surfaceContainer.withValues(alpha: isDark ? 0.82 : 0.92),
         indicatorColor: kMercateTeal.withValues(alpha: isDark ? 0.28 : 0.22),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
@@ -183,6 +183,8 @@ class GlassPanel extends StatelessWidget {
   final EdgeInsetsGeometry? margin;
   final double borderRadius;
   final double blur;
+  final bool accent;
+  final Color? glowColor;
 
   const GlassPanel({
     super.key,
@@ -191,20 +193,26 @@ class GlassPanel extends StatelessWidget {
     this.margin,
     this.borderRadius = 20,
     this.blur = 18,
+    this.accent = false,
+    this.glowColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final glow = glowColor ?? kMercateTeal;
 
     return Container(
       margin: margin,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(borderRadius),
         border: Border.all(
-          color: (isDark ? Colors.white : Colors.black)
-              .withValues(alpha: isDark ? 0.1 : 0.06),
+          color: accent
+              ? glow.withValues(alpha: isDark ? 0.35 : 0.4)
+              : (isDark ? Colors.white : Colors.black)
+                  .withValues(alpha: isDark ? 0.1 : 0.06),
+          width: accent ? 1.2 : 1,
         ),
         boxShadow: [
           BoxShadow(
@@ -212,6 +220,12 @@ class GlassPanel extends StatelessWidget {
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
+          if (accent)
+            BoxShadow(
+              color: glow.withValues(alpha: isDark ? 0.18 : 0.12),
+              blurRadius: 28,
+              spreadRadius: -4,
+            ),
         ],
       ),
       child: ClipRRect(
@@ -224,12 +238,18 @@ class GlassPanel extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  scheme.surfaceContainerHighest
-                      .withValues(alpha: isDark ? 0.45 : 0.65),
-                  scheme.surfaceContainer
-                      .withValues(alpha: isDark ? 0.35 : 0.5),
-                ],
+                colors: accent
+                    ? [
+                        glow.withValues(alpha: isDark ? 0.22 : 0.18),
+                        scheme.surfaceContainer
+                            .withValues(alpha: isDark ? 0.4 : 0.55),
+                      ]
+                    : [
+                        scheme.surfaceContainerHighest
+                            .withValues(alpha: isDark ? 0.5 : 0.7),
+                        scheme.surfaceContainer
+                            .withValues(alpha: isDark ? 0.38 : 0.55),
+                      ],
               ),
             ),
             child: child,
@@ -273,7 +293,6 @@ class GlassScaffoldBody extends StatelessWidget {
             ),
           ),
         ),
-        // Soft teal glow
         Positioned(
           top: -80,
           right: -40,
@@ -283,7 +302,7 @@ class GlassScaffoldBody extends StatelessWidget {
               height: 220,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: kMercateTeal.withValues(alpha: isDark ? 0.12 : 0.1),
+                color: kMercateTeal.withValues(alpha: isDark ? 0.14 : 0.12),
               ),
             ),
           ),
@@ -297,7 +316,7 @@ class GlassScaffoldBody extends StatelessWidget {
               height: 180,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: kMercateTealDeep.withValues(alpha: isDark ? 0.08 : 0.07),
+                color: kMercateTealDeep.withValues(alpha: isDark ? 0.1 : 0.08),
               ),
             ),
           ),
