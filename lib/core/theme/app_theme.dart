@@ -7,6 +7,9 @@ const Color kMercateTeal = Color(0xFF00E5A8);
 const Color kMercateTealDeep = Color(0xFF00B87A);
 const Color kMercateTealSoft = Color(0xFF5CFFE0);
 
+/// Clearance above bottom nav for FABs on tab roots.
+const double kFabBottomClearance = 84;
+
 class AppTheme {
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
@@ -49,12 +52,14 @@ class AppTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      scaffoldBackgroundColor: Colors.transparent,
+      // Solid surface so pushed routes (Settings, History, etc.) are not black
+      // in light mode. Tab shell still paints GlassScaffoldBody on top.
+      scaffoldBackgroundColor: scheme.surface,
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        backgroundColor: Colors.transparent,
+        backgroundColor: scheme.surface.withValues(alpha: isDark ? 0.92 : 0.96),
         foregroundColor: scheme.onSurface,
         surfaceTintColor: Colors.transparent,
       ),
@@ -74,7 +79,7 @@ class AppTheme {
         elevation: 0,
         height: 68,
         backgroundColor:
-            scheme.surfaceContainer.withValues(alpha: isDark ? 0.82 : 0.92),
+            scheme.surfaceContainer.withValues(alpha: isDark ? 0.92 : 0.96),
         indicatorColor: kMercateTeal.withValues(alpha: isDark ? 0.28 : 0.22),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
@@ -119,7 +124,7 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor:
-            scheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.4 : 0.5),
+            scheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.45 : 0.65),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(
@@ -138,6 +143,9 @@ class AppTheme {
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        // Avoid label/hint overlap on dense dialogs
+        floatingLabelBehavior: FloatingLabelBehavior.auto,
+        isDense: false,
       ),
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(
@@ -148,12 +156,13 @@ class AppTheme {
         backgroundColor: scheme.surfaceContainerHigh.withValues(alpha: 0.5),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: scheme.surfaceContainerHigh.withValues(alpha: 0.95),
+        backgroundColor: scheme.surfaceContainerHigh,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 8,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       ),
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: scheme.surfaceContainer.withValues(alpha: 0.96),
+        backgroundColor: scheme.surfaceContainer,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -172,6 +181,21 @@ class AppTheme {
         backgroundColor: scheme.inverseSurface,
         contentTextStyle: TextStyle(color: scheme.onInverseSurface),
       ),
+    );
+  }
+}
+
+/// Raises FABs above the bottom navigation bar.
+class RaisedFab extends StatelessWidget {
+  final Widget child;
+
+  const RaisedFab({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: kFabBottomClearance),
+      child: child,
     );
   }
 }
