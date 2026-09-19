@@ -4,7 +4,10 @@ import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/day_closing_service.dart';
 import '../../services/expense_service.dart';
+import '../../services/security_service.dart';
+import '../security/lock_screen.dart';
 import '../settings/business_profile_page.dart';
+import '../settings/security_settings_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -17,6 +20,7 @@ class _DashboardPageState extends State<DashboardPage> {
   final _closing = DayClosingService();
   final _expenses = ExpenseService();
   final _profileService = BusinessProfileService();
+  final _security = SecurityService();
 
   DaySummary? _summary;
   List<Map<String, dynamic>> _todayExpenses = [];
@@ -57,6 +61,24 @@ class _DashboardPageState extends State<DashboardPage> {
         _loading = false;
       });
     }
+  }
+
+  Future<bool> _confirmIdentity(String reason) async {
+    return _security.requireUnlock(
+      biometricReason: reason,
+      promptPin: () => promptPinDialog(context, title: reason),
+    );
+  }
+
+  Future<void> _openProfile() async {
+    final ok = await _confirmIdentity('Confirm to change shop profile');
+    if (!ok || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const BusinessProfilePage(),
+      ),
+    );
+    _load();
   }
 
   Future<void> _addExpense() async {
@@ -163,6 +185,9 @@ class _DashboardPageState extends State<DashboardPage> {
       );
       return;
     }
+
+    final identityOk = await _confirmIdentity('Confirm to close the day');
+    if (!identityOk || !mounted) return;
 
     final openingCtrl = TextEditingController(text: '0');
     final cashCtrl = TextEditingController();
@@ -276,21 +301,25 @@ class _DashboardPageState extends State<DashboardPage> {
         title: Text(_shopName),
         actions: [
           IconButton(
-            tooltip: 'Shop profile',
-            icon: const Icon(Icons.storefront_outlined),
+            tooltip: 'Settings & security',
+            icon: const Icon(Icons.settings_outlined),
             onPressed: () async {
               await Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const BusinessProfilePage(),
+                  builder: (_) => const SecuritySettingsPage(),
                 ),
               );
               _load();
             },
           ),
+          IconButton(
+            tooltip: 'Shop profile',
+            icon: const Icon(Icons.storefront_outlined),
+            onPressed: _openProfile,
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
-      // Right side — Assistant FAB is on the left (shell startFloat).
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'expense_fab',

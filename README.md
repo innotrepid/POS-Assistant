@@ -2,36 +2,28 @@
 
 Offline-first business companion for small shops.
 
-## Status (`foundation`)
+## Security
 
-| Module | Status |
-|--------|--------|
-| Trading (POS, stock, debtors, creditors) | Done |
-| Expenses + day close | Done |
-| Reports + PDF | Done |
-| Offline assistant (FAB only) | Done |
-| **Business profiles** | **Done** |
+**Home → gear (Settings & security)**
 
-## UI notes
+1. **Set PIN** (4+ digits)  
+2. Turn on **Require unlock**  
+3. Optional: **Prefer biometrics** (fingerprint / face)
 
-- **Assistant** = sparkle FAB on the **left** (not in bottom nav).
-- **Expense** / **Add product** FABs stay on the **right** so they do not overlap.
+When lock is on:
+- App opens to **lock screen** (biometric or PIN)
+- **Close day** and **Shop profile** ask for identity again
 
-## Business profiles
+PIN is stored as SHA-256 hash in local settings (not plain text).
 
-Home → storefront icon → **Shop profile**
+## Safety rules (wave 1)
 
-| Profile | Defaults |
-|---------|----------|
-| Duka / general retail | unit `piece` (default) |
-| Mama mboga / produce | unit `kg` |
-| Mini-market | unit `piece` |
-| Wholesale | unit `carton` |
-| Hardware / clothing | unit `piece` |
-| Pharmacy / restaurant | listed, disabled until later |
+- M-Pesa/bank need reference  
+- No accidental credit without choosing Credit  
+- Cash change calculation  
+- Discount / below-cost / debt warnings  
+- Notifications bell (in-app)  
 
-New products pick up unit / batch / expiry defaults from the active profile. Existing products are not rewritten.
+## Install
 
-## Phone install
-
-**Actions → Build APK** → `pos-assistant-apk`.
+**Actions → Build APK** → install artifact.
