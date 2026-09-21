@@ -7,20 +7,20 @@ import '../../services/inventory_service.dart';
 import '../../services/sales_service.dart';
 import 'cart_controller.dart';
 import 'checkout_sheet.dart';
-import 'sales_history_page.dart';
+import 'receipt_page.dart';
 
 class PosPage extends StatefulWidget {
-  final VoidCallback? onSaleCompleted;
-  final VoidCallback? onOpenAssistant;
-  final VoidCallback? onOpenNotifications;
   final int unreadCount;
+  final VoidCallback? onOpenNotifications;
+  final VoidCallback? onOpenAssistant;
+  final VoidCallback? onSaleCompleted;
 
   const PosPage({
     super.key,
-    this.onSaleCompleted,
-    this.onOpenAssistant,
-    this.onOpenNotifications,
     this.unreadCount = 0,
+    this.onOpenNotifications,
+    this.onOpenAssistant,
+    this.onSaleCompleted,
   });
 
   @override
@@ -34,48 +34,40 @@ class _PosPageState extends State<PosPage> {
   final _searchController = TextEditingController();
 
   List<Product> _products = [];
-  Map<String, double> _stockByProduct = {};
+  Map<String, double> _stock = {};
   bool _loading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _cart.addListener(_onCartChanged);
     _loadProducts();
   }
 
   @override
   void dispose() {
-    _cart.removeListener(_onCartChanged);
-    _cart.dispose();
     _searchController.dispose();
+    _cart.dispose();
     super.dispose();
   }
 
-  void _onCartChanged() {
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _loadProducts({String? query}) async {
+  Future<void> _loadProducts({String query = ''}) async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final products = (query == null || query.trim().isEmpty)
+      final products = query.trim().isEmpty
           ? await _inventory.getAllProducts()
-          : await _inventory.searchProducts(query.trim());
-
-      final stockMap = <String, double>{};
+          : await _inventory.searchProducts(query);
+      final stock = <String, double>{};
       for (final p in products) {
-        stockMap[p.id] = await _inventory.getStock(p.id);
+        stock[p.id] = await _inventory.getStock(p.id);
       }
-
       if (!mounted) return;
       setState(() {
         _products = products;
-        _stockByProduct = stockMap;
+        _stock = stock;
         _loading = false;
       });
     } catch (e) {
@@ -87,7 +79,7 @@ class _PosPageState extends State<PosPage> {
     }
   }
 
-  Future<void> _addQuickSale() async {
+  Future<void> _quickSale() async {
     final nameCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     final qtyCtrl = TextEditingController(text: '1');
@@ -101,27 +93,26 @@ class _PosPageState extends State<PosPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Does not affect inventory. Use for items not in the catalogue.',
-                  style: TextStyle(fontSize: 13),
-                ),
-                const SizedBox(height: 16),
                 TextField(
                   controller: nameCtrl,
                   decoration: const InputDecoration(labelText: 'Item name'),
                   autofocus: true,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 TextField(
                   controller: priceCtrl,
                   decoration: const InputDecoration(labelText: 'Price'),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 TextField(
                   controller: qtyCtrl,
                   decoration: const InputDecoration(labelText: 'Quantity'),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                 ),
               ],
             ),
@@ -140,23 +131,21 @@ class _PosPageState extends State<PosPage> {
       },
     );
 
-    if (ok != true) return;
-
+    if (ok != true || !mounted) return;
     final name = nameCtrl.text.trim();
     final price = Money.parse(priceCtrl.text);
     final qty = Money.parse(qtyCtrl.text);
-    if (name.isEmpty || price < 0 || qty <= 0) {
-      if (!mounted) return;
+    if (name.isEmpty || price <= 0 || qty <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter a valid name, price, and quantity')),
       );
       return;
     }
-
-    _cart.addQuickSale(name: name, unitPrice: price, quantity: qty);
+    _cart.addAdhoc(name: name, unitPrice: price, quantity: qty);
+    setState(() {});
   }
 
-  Future<void> _openCheckout() async {
+  Future<void> _checkout() async {
     if (_cart.isEmpty) return;
 
     final result = await showModalBottomSheet<CheckoutResult>(
@@ -175,8 +164,14 @@ class _PosPageState extends State<PosPage> {
     widget.onSaleCompleted?.call();
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
       SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 88),
+        duration: const Duration(seconds: 8),
         content: Text(
           'Sale complete · ${Money.format(result.total)} · ${result.paymentType}'
           '${result.changeGiven > 0 ? ' · change ${Money.format(result.changeGiven)}' : ''}',
@@ -184,9 +179,10 @@ class _PosPageState extends State<PosPage> {
         action: SnackBarAction(
           label: 'Receipt',
           onPressed: () {
-            Navigator.of(context).push(
+            messenger.hideCurrentSnackBar();
+            Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute<void>(
-                builder: (_) => SalesHistoryPage(highlightSaleId: result.saleId),
+                builder: (_) => ReceiptPage(saleId: result.saleId),
               ),
             );
           },
@@ -217,261 +213,128 @@ class _PosPageState extends State<PosPage> {
                 child: const Icon(Icons.notifications_outlined),
               ),
             ),
-          if (widget.onOpenAssistant != null)
-            IconButton(
-              tooltip: 'Assistant',
-              icon: const Icon(Icons.auto_awesome),
-              onPressed: widget.onOpenAssistant,
-            ),
           IconButton(
             tooltip: 'Quick sale',
-            icon: const Icon(Icons.flash_on),
-            onPressed: _addQuickSale,
-          ),
-          IconButton(
-            tooltip: 'Sales history',
-            icon: const Icon(Icons.history),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const SalesHistoryPage(),
-                ),
-              );
-            },
+            onPressed: _quickSale,
+            icon: const Icon(Icons.bolt_outlined),
           ),
         ],
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
             child: GlassPanel(
               borderRadius: 16,
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: TextField(
                 controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search name, barcode, or SKU',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            _loadProducts();
-                          },
-                        ),
+                decoration: const InputDecoration(
+                  hintText: 'Search products',
                   border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                  prefixIcon: Icon(Icons.search),
                 ),
-                textInputAction: TextInputAction.search,
-                onChanged: (value) => _loadProducts(query: value),
-                onSubmitted: (value) => _loadProducts(query: value),
+                onChanged: (q) => _loadProducts(query: q),
               ),
             ),
           ),
-          Expanded(flex: 3, child: _buildProductList()),
-          Expanded(flex: 2, child: _buildCartPanel()),
+          Expanded(child: _buildCatalogue()),
+          _buildCartBar(),
         ],
       ),
     );
   }
 
-  Widget _buildProductList() {
+  Widget _buildCatalogue() {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return Center(
-        child: GlassPanel(
-          margin: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error!, textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: () => _loadProducts(query: _searchController.text),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return Center(child: Text(_error!));
     }
     if (_products.isEmpty) {
-      return Center(
-        child: GlassPanel(
-          margin: const EdgeInsets.all(24),
-          child: Text(
-            'No products yet.\nAdd stock under the Stock tab,\nor use the flash icon for a quick sale.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ),
-      );
+      return const Center(child: Text('No products. Add stock first.'));
     }
-
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
       itemCount: _products.length,
       itemBuilder: (context, index) {
-        final product = _products[index];
-        final stock = _stockByProduct[product.id] ?? 0;
-        final outOfStock = stock <= 0;
-
+        final p = _products[index];
+        final qty = _stock[p.id] ?? 0;
         return GlassPanel(
           margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           borderRadius: 16,
+          padding: EdgeInsets.zero,
           child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Text(
-              '${Money.format(product.sellingPrice)} · Stock: ${_fmtQty(stock)}',
+              '${Money.format(p.sellingPrice)} · stock ${Money.format(qty)} ${p.unit}',
             ),
             trailing: IconButton(
-              icon: Icon(
-                Icons.add_shopping_cart,
-                color: outOfStock
-                    ? Theme.of(context).disabledColor
-                    : Theme.of(context).colorScheme.primary,
-              ),
-              onPressed: outOfStock ? null : () => _cart.addProduct(product),
+              icon: const Icon(Icons.add_shopping_cart),
+              onPressed: qty <= 0
+                  ? null
+                  : () {
+                      _cart.addProduct(p, quantity: 1);
+                      setState(() {});
+                    },
             ),
-            onTap: outOfStock ? null : () => _cart.addProduct(product),
+            onTap: qty <= 0
+                ? null
+                : () {
+                    _cart.addProduct(p, quantity: 1);
+                    setState(() {});
+                  },
           ),
         );
       },
     );
   }
 
-  Widget _buildCartPanel() {
-    return GlassPanel(
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      borderRadius: 24,
-      accent: !_cart.isEmpty,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      child: Column(
-        children: [
-          Row(
+  Widget _buildCartBar() {
+    return ListenableBuilder(
+      listenable: _cart,
+      builder: (context, _) {
+        if (_cart.isEmpty) return const SizedBox.shrink();
+        return GlassPanel(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          borderRadius: 18,
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          child: Row(
             children: [
-              Text(
-                'CART',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.4,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              const Spacer(),
-              if (!_cart.isEmpty)
-                TextButton(onPressed: _cart.clear, child: const Text('Clear')),
-            ],
-          ),
-          Expanded(
-            child: _cart.isEmpty
-                ? Center(
-                    child: Text(
-                      'Tap products or use Quick sale',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${_cart.lineCount} item${_cart.lineCount == 1 ? '' : 's'}',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                    Text(
+                      Money.format(_cart.total),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
                           ),
                     ),
-                  )
-                : ListView.builder(
-                    itemCount: _cart.lines.length,
-                    itemBuilder: (context, index) {
-                      final line = _cart.lines[index];
-                      return ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          line.isQuickSale ? '${line.name} (quick)' : line.name,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: Text(
-                          '${_fmtQty(line.quantity)} × ${Money.format(line.unitPrice)}',
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.remove_circle_outline),
-                              onPressed: () {
-                                _cart.setQuantity(line.lineKey, line.quantity - 1);
-                              },
-                            ),
-                            Text(
-                              _fmtQty(line.quantity),
-                              style: const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add_circle_outline),
-                              onPressed: () {
-                                _cart.setQuantity(line.lineKey, line.quantity + 1);
-                              },
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              Money.format(line.lineTotal),
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          SafeArea(
-            top: false,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'TOTAL',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      Text(
-                        Money.format(_cart.subtotal),
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
-                FilledButton.icon(
-                  onPressed: _cart.isEmpty ? null : _openCheckout,
-                  icon: const Icon(Icons.payments),
-                  label: const Text('Pay'),
-                ),
-              ],
-            ),
+              ),
+              TextButton(
+                onPressed: () {
+                  _cart.clear();
+                  setState(() {});
+                },
+                child: const Text('Clear'),
+              ),
+              FilledButton(
+                onPressed: _checkout,
+                child: const Text('Pay'),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
-  }
-
-  String _fmtQty(double value) {
-    if (value == value.truncateToDouble()) {
-      return value.toInt().toString();
-    }
-    return value.toStringAsFixed(2);
   }
 }

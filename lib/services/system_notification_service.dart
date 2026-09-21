@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 
-/// Lightweight system notification facade.
-/// (Previously used flutter_local_notifications; kept offline-safe.)
+/// System tray notifications (optional). Primary alerts stay in-app.
+/// flutter_local_notifications was removed to avoid desugar build issues;
+/// this facade keeps the same call sites working offline.
 class SystemNotificationService {
   SystemNotificationService._();
-  static final SystemNotificationService instance = SystemNotificationService._();
+  static final SystemNotificationService instance =
+      SystemNotificationService._();
 
   bool _ready = false;
 
@@ -13,15 +15,16 @@ class SystemNotificationService {
   }
 
   Future<void> show({
+    required int id,
     required String title,
     required String body,
-    int id = 0,
+    required String category,
+    String priority = 'info',
   }) async {
-    if (!_ready) return;
-    // In-app notifications are primary; system tray is optional.
-    debugPrint('Mercate notify: $title — $body');
+    try {
+      await init();
+      if (!_ready) return;
+      debugPrint('Mercate [$category/$priority] $title — $body (id=$id)');
+    } catch (_) {}
   }
-
-  static const channelName = 'Mercate alerts';
-  static const channelDescription = 'Mercate business alerts';
 }
