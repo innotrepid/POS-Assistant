@@ -48,9 +48,9 @@ class PdfReportBuilder {
           pw.SizedBox(height: 8),
           _kv('Sales count', '${day.saleCount}'),
           _kv('Sales total', Money.format(day.salesTotal)),
-          _kv('Cash', Money.format(day.salesCash)),
-          _kv('M-Pesa', Money.format(day.salesMpesa)),
-          _kv('Credit', Money.format(day.salesCredit)),
+          _kv('Cash', Money.format(day.cash)),
+          _kv('M-Pesa', Money.format(day.mpesa)),
+          _kv('Credit', Money.format(day.creditTotal)),
 
           pw.SizedBox(height: 16),
           pw.Text(
@@ -64,7 +64,7 @@ class PdfReportBuilder {
           _kv('Stock value (cost)', Money.format(stockValue)),
           ...stock.take(40).map(
                 (r) => _kv(
-                  '${r.name} (${r.quantity} ${r.unit})',
+                  '${r.name} (${r.quantity})',
                   Money.format(r.stockValue),
                 ),
               ),
