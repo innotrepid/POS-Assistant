@@ -1,1 +1,1 @@
-PLACEHOLDER
+{{FILE:/tmp/dashboard_fixed2.dart}}

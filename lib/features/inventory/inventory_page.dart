@@ -1,1 +1,1 @@
-PLACEHOLDER
+{{FILE:/tmp/inventory_fixed2.dart}}
