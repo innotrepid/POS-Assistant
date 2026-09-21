@@ -303,9 +303,7 @@ class _PosPageState extends State<PosPage> {
             ),
             trailing: IconButton(
               icon: const Icon(Icons.add_shopping_cart),
-              onPressed: out
-                  ? null
-                  : () => _cart.addProduct(product),
+              onPressed: out ? null : () => _cart.addProduct(product),
             ),
             onTap: out ? null : () => _cart.addProduct(product),
           ),
@@ -339,7 +337,7 @@ class _PosPageState extends State<PosPage> {
                         children: [
                           Expanded(
                             child: Text(
-                              line.displayName,
+                              line.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
