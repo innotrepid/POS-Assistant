@@ -46,6 +46,19 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
   double get _subtotal =>
       Money.round(_lines.fold<double>(0, (s, l) => s + l.total));
 
+  /// Products this supplier is known to bring (name match), else all stock.
+  List<Product> get _productChoices {
+    final all = _products;
+    final supplies = _supplier?.supplies ?? [];
+    if (supplies.isEmpty) return all;
+    final lower = supplies.map((s) => s.toLowerCase()).toList();
+    final matched = all.where((p) {
+      final n = p.name.toLowerCase();
+      return lower.any((s) => n.contains(s) || s.contains(n));
+    }).toList();
+    return matched.isEmpty ? all : matched;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -79,14 +92,19 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
   }
 
   Future<void> _addLine() async {
-    if (_products.isEmpty) {
+    final choices = _productChoices;
+    if (choices.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add products under Stock first')),
+        const SnackBar(
+          content: Text(
+            'Add products under Stock first (names should match what the supplier supplies).',
+          ),
+        ),
       );
       return;
     }
 
-    Product? selected = _products.first;
+    Product? selected = choices.first;
     final qtyCtrl = TextEditingController(text: '1');
     final costCtrl = TextEditingController(
       text: selected.costPrice?.toStringAsFixed(2) ?? '0',
@@ -102,10 +120,19 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_supplier != null && _supplier!.supplies.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          'From ${_supplier!.name}: ${_supplier!.supplies.join(', ')}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                     DropdownButtonFormField<Product>(
                       value: selected,
-                      items: _products
+                      items: choices
                           .map(
                             (p) => DropdownMenuItem(
                               value: p,
@@ -123,6 +150,7 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
                       },
                       decoration: const InputDecoration(labelText: 'Product'),
                     ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: qtyCtrl,
                       decoration: const InputDecoration(labelText: 'Quantity'),
@@ -130,6 +158,7 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
                         decimal: true,
                       ),
                     ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: costCtrl,
                       decoration: const InputDecoration(labelText: 'Unit cost'),
@@ -237,12 +266,26 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
                         .map(
                           (s) => DropdownMenuItem(
                             value: s,
-                            child: Text(s.name),
+                            child: Text(
+                              s.supplies.isEmpty
+                                  ? s.name
+                                  : '${s.name} (${s.supplies.length} items)',
+                            ),
                           ),
                         )
                         .toList(),
-                    onChanged: (s) => setState(() => _supplier = s),
+                    onChanged: (s) => setState(() {
+                      _supplier = s;
+                      _lines.clear();
+                    }),
                   ),
+                if (_supplier != null && _supplier!.supplies.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Usually brings: ${_supplier!.supplies.join(', ')}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 TextField(
                   controller: _refCtrl,
