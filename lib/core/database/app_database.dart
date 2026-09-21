@@ -1,6 +1,8 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
+/// Shared meta DB (profile choice, shop name, PIN) +
+/// one business DB per profile so data never leaks across types.
 class AppDatabase {
   AppDatabase._();
 
@@ -13,20 +15,82 @@ class AppDatabase {
   }
 
   Database? _database;
+  Database? _metaDatabase;
   bool _useMemory = false;
+  String _profileId = 'duka';
 
   static const int schemaVersion = 5;
 
-  Future<Database> get database async {
-    if (_database != null) {
-      return _database!;
-    }
+  String get activeProfileId => _profileId;
 
-    _database = await _openDatabase();
+  /// Switch business data file. Closes the previous profile DB.
+  Future<void> useProfile(String profileId) async {
+    final id = profileId.trim().isEmpty ? 'duka' : profileId.trim();
+    if (_database != null && _profileId == id) return;
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
+    _profileId = id;
+  }
+
+  Future<Database> get metaDatabase async {
+    if (_metaDatabase != null) return _metaDatabase!;
+    if (_useMemory) {
+      _metaDatabase = await openDatabase(
+        inMemoryDatabasePath,
+        version: 1,
+        onCreate: (db, _) async {
+          await db.execute('''
+            CREATE TABLE settings (
+              key TEXT PRIMARY KEY,
+              value TEXT
+            )
+          ''');
+        },
+      );
+      return _metaDatabase!;
+    }
+    final databasesPath = await getDatabasesPath();
+    final path = join(databasesPath, 'mercate_meta.db');
+    _metaDatabase = await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, _) async {
+        await db.execute('''
+          CREATE TABLE settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+          )
+        ''');
+      },
+    );
+    return _metaDatabase!;
+  }
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+
+    // Prefer profile from meta if available
+    try {
+      final meta = await metaDatabase;
+      final rows = await meta.query(
+        'settings',
+        where: 'key = ?',
+        whereArgs: ['business_profile'],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) {
+        final v = rows.first['value'] as String?;
+        if (v != null && v.isNotEmpty) _profileId = v;
+      }
+    } catch (_) {}
+
+    _database = await _openProfileDatabase(_profileId);
     return _database!;
   }
 
-  Future<Database> _openDatabase() async {
+  Future<Database> _openProfileDatabase(String profileId) async {
     if (_useMemory) {
       return openDatabase(
         inMemoryDatabasePath,
@@ -37,10 +101,14 @@ class AppDatabase {
     }
 
     final databasesPath = await getDatabasesPath();
-    final path = join(databasesPath, 'pos_assistant.db');
+    // Legacy single file for first migration path
+    final legacyPath = join(databasesPath, 'pos_assistant.db');
+    final profilePath = join(databasesPath, 'mercate_$profileId.db');
 
+    // If profile DB missing but legacy exists and this is first profile open,
+    // copy is not automatic — user starts clean per profile (isolation).
     return openDatabase(
-      path,
+      profilePath,
       version: schemaVersion,
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
@@ -189,6 +257,7 @@ class AppDatabase {
         payment_terms TEXT,
         credit_limit REAL,
         notes TEXT,
+        supplies TEXT,
         active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -342,56 +411,53 @@ class AppDatabase {
     int newVersion,
   ) async {
     if (oldVersion < 2) {
-      await db.execute(
-        'ALTER TABLE products ADD COLUMN track_batches INTEGER NOT NULL DEFAULT 0',
-      );
-      await db.execute(
-        'ALTER TABLE products ADD COLUMN has_expiry INTEGER NOT NULL DEFAULT 0',
-      );
+      try {
+        await db.execute(
+          'ALTER TABLE products ADD COLUMN track_batches INTEGER NOT NULL DEFAULT 0',
+        );
+        await db.execute(
+          'ALTER TABLE products ADD COLUMN has_expiry INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (_) {}
     }
     if (oldVersion < 3) {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS day_closings (
-          id TEXT PRIMARY KEY,
-          business_date TEXT NOT NULL UNIQUE,
-          opening_cash REAL NOT NULL DEFAULT 0,
-          counted_cash REAL NOT NULL DEFAULT 0,
-          counted_mpesa REAL NOT NULL DEFAULT 0,
-          expected_cash REAL NOT NULL DEFAULT 0,
-          expected_mpesa REAL NOT NULL DEFAULT 0,
-          sales_total REAL NOT NULL DEFAULT 0,
-          expenses_total REAL NOT NULL DEFAULT 0,
-          notes TEXT,
-          created_at TEXT NOT NULL
-        )
-      ''');
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_expenses_created ON expenses(created_at)',
-      );
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS day_closings (
+            id TEXT PRIMARY KEY,
+            business_date TEXT NOT NULL UNIQUE,
+            opening_cash REAL NOT NULL DEFAULT 0,
+            counted_cash REAL NOT NULL DEFAULT 0,
+            counted_mpesa REAL NOT NULL DEFAULT 0,
+            expected_cash REAL NOT NULL DEFAULT 0,
+            expected_mpesa REAL NOT NULL DEFAULT 0,
+            sales_total REAL NOT NULL DEFAULT 0,
+            expenses_total REAL NOT NULL DEFAULT 0,
+            notes TEXT,
+            created_at TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
     }
     if (oldVersion < 4) {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS notifications (
-          id TEXT PRIMARY KEY,
-          category TEXT NOT NULL,
-          priority TEXT NOT NULL DEFAULT 'info',
-          title TEXT NOT NULL,
-          body TEXT,
-          deep_link TEXT,
-          entity_type TEXT,
-          entity_id TEXT,
-          dedupe_key TEXT,
-          is_read INTEGER NOT NULL DEFAULT 0,
-          created_at TEXT NOT NULL,
-          read_at TEXT
-        )
-      ''');
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)',
-      );
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_payments_reference ON payments(reference)',
-      );
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS notifications (
+            id TEXT PRIMARY KEY,
+            category TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'info',
+            title TEXT NOT NULL,
+            body TEXT,
+            deep_link TEXT,
+            entity_type TEXT,
+            entity_id TEXT,
+            dedupe_key TEXT,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            read_at TEXT
+          )
+        ''');
+      } catch (_) {}
     }
     if (oldVersion < 5) {
       try {
@@ -399,14 +465,20 @@ class AppDatabase {
           'ALTER TABLE sale_items ADD COLUMN refunded_quantity REAL NOT NULL DEFAULT 0',
         );
       } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE suppliers ADD COLUMN supplies TEXT');
+      } catch (_) {}
     }
   }
 
   Future<void> close() async {
-    final db = _database;
-    if (db != null) {
-      await db.close();
+    if (_database != null) {
+      await _database!.close();
       _database = null;
+    }
+    if (_metaDatabase != null) {
+      await _metaDatabase!.close();
+      _metaDatabase = null;
     }
   }
 
