@@ -1,6 +1,7 @@
 name: Build APK
 
 on:
+  # Manual run: Actions → Build APK → Run workflow
   workflow_dispatch:
     inputs:
       build_type:
@@ -57,8 +58,6 @@ jobs:
       - name: Configure applicationId, label, permissions, icons
         run: |
           set -e
-
-          # --- applicationId / namespace ---
           for f in android/app/build.gradle android/app/build.gradle.kts; do
             if [ -f "$f" ]; then
               sed -i 's/applicationId *= *"[^"]*"/applicationId = "com.aetherion.mercate"/' "$f" || true
@@ -67,8 +66,6 @@ jobs:
               sed -i 's/namespace "[^"]*"/namespace "com.aetherion.mercate"/' "$f" || true
             fi
           done
-
-          # --- label + permissions ---
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST" ]; then
             sed -i 's/android:label="[^"]*"/android:label="Mercate"/' "$MANIFEST"
@@ -79,8 +76,6 @@ jobs:
             grep -q "POST_NOTIFICATIONS" "$MANIFEST" || \
               sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
           fi
-
-          # --- resolve logo (handles space in "Mercate Logo.png") ---
           mkdir -p assets/images
           LOGO=""
           if [ -f "assets/images/mercate_logo.png" ] && [ -s "assets/images/mercate_logo.png" ]; then
@@ -92,23 +87,15 @@ jobs:
             base64 -d assets/images/mercate_logo.b64 > assets/images/mercate_logo.png || true
             LOGO="assets/images/mercate_logo.png"
           fi
-
           if [ -n "$LOGO" ] && [ -f "$LOGO" ] && [ -s "$LOGO" ]; then
             echo "Generating launcher icons from $LOGO"
             pip install pillow -q
             python3 << 'PY'
           from pathlib import Path
           from PIL import Image
-
           logo = Path("assets/images/mercate_logo.png")
           img = Image.open(logo).convert("RGBA")
-          sizes = {
-              "mipmap-mdpi": 48,
-              "mipmap-hdpi": 72,
-              "mipmap-xhdpi": 96,
-              "mipmap-xxhdpi": 144,
-              "mipmap-xxxhdpi": 192,
-          }
+          sizes = {"mipmap-mdpi": 48, "mipmap-hdpi": 72, "mipmap-xhdpi": 96, "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192}
           for folder, size in sizes.items():
               out_dir = Path("android/app/src/main/res") / folder
               out_dir.mkdir(parents=True, exist_ok=True)
@@ -120,68 +107,30 @@ jobs:
           else
             echo "No Mercate logo found — using default Flutter icon"
           fi
-
           ls -la assets/images/ || true
 
-      - name: Enable core library desugaring (safe if unused)
+      - name: Enable core library desugaring
         run: |
           python3 << 'PY'
           from pathlib import Path
-
           path = Path("android/app/build.gradle.kts")
           if not path.exists():
               path = Path("android/app/build.gradle")
           if not path.exists():
-              print("No Gradle file; skip desugar")
               raise SystemExit(0)
-
           text = path.read_text()
           is_kts = path.name.endswith(".kts")
-          print(f"Patching {path} (kts={is_kts})")
-
           if is_kts:
-              if "isCoreLibraryDesugaringEnabled" not in text:
-                  if "compileOptions {" in text:
-                      text = text.replace(
-                          "compileOptions {",
-                          "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
-                          1,
-                      )
-                  else:
-                      text = text.replace(
-                          "android {",
-                          "android {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }",
-                          1,
-                      )
-              if "desugar_jdk_libs" not in text:
-                  dep = '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
-                  if "dependencies {" in text:
-                      text = text.replace("dependencies {", "dependencies {\n" + dep, 1)
-                  else:
-                      text += "\n\ndependencies {\n" + dep + "}\n"
+              if "isCoreLibraryDesugaringEnabled" not in text and "compileOptions {" in text:
+                  text = text.replace("compileOptions {", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true", 1)
+              if "desugar_jdk_libs" not in text and "dependencies {" in text:
+                  text = text.replace("dependencies {", 'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n', 1)
           else:
-              if "coreLibraryDesugaringEnabled" not in text:
-                  if "compileOptions {" in text:
-                      text = text.replace(
-                          "compileOptions {",
-                          "compileOptions {\n        coreLibraryDesugaringEnabled true",
-                          1,
-                      )
-                  else:
-                      text = text.replace(
-                          "android {",
-                          "android {\n    compileOptions {\n        coreLibraryDesugaringEnabled true\n        sourceCompatibility JavaVersion.VERSION_1_8\n        targetCompatibility JavaVersion.VERSION_1_8\n    }",
-                          1,
-                      )
-              if "desugar_jdk_libs" not in text:
-                  dep = "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n"
-                  if "dependencies {" in text:
-                      text = text.replace("dependencies {", "dependencies {\n" + dep, 1)
-                  else:
-                      text += "\n\ndependencies {\n" + dep + "}\n"
-
+              if "coreLibraryDesugaringEnabled" not in text and "compileOptions {" in text:
+                  text = text.replace("compileOptions {", "compileOptions {\n        coreLibraryDesugaringEnabled true", 1)
+              if "desugar_jdk_libs" not in text and "dependencies {" in text:
+                  text = text.replace("dependencies {", "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n", 1)
           path.write_text(text)
-          print("Desugar patch applied")
           PY
 
       - name: Get dependencies
@@ -206,15 +155,3 @@ jobs:
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 14
-
-      - name: Upload diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mercate-apk-diagnostics
-          path: |
-            android/app/build.gradle
-            android/app/build.gradle.kts
-            android/app/src/main/AndroidManifest.xml
-          if-no-files-found: ignore
-          retention-days: 7
