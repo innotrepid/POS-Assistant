@@ -11,17 +11,17 @@ import 'receipt_page.dart';
 import 'sales_history_page.dart';
 
 class PosPage extends StatefulWidget {
-  final int unreadCount;
-  final VoidCallback? onOpenNotifications;
-  final VoidCallback? onOpenAssistant;
   final VoidCallback? onSaleCompleted;
+  final VoidCallback? onOpenAssistant;
+  final VoidCallback? onOpenNotifications;
+  final int unreadCount;
 
   const PosPage({
     super.key,
-    this.unreadCount = 0,
-    this.onOpenNotifications,
-    this.onOpenAssistant,
     this.onSaleCompleted,
+    this.onOpenAssistant,
+    this.onOpenNotifications,
+    this.unreadCount = 0,
   });
 
   @override
@@ -35,40 +35,48 @@ class _PosPageState extends State<PosPage> {
   final _searchController = TextEditingController();
 
   List<Product> _products = [];
-  Map<String, double> _stock = {};
+  Map<String, double> _stockByProduct = {};
   bool _loading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _cart.addListener(_onCartChanged);
     _loadProducts();
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _cart.removeListener(_onCartChanged);
     _cart.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadProducts({String query = ''}) async {
+  void _onCartChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadProducts({String? query}) async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final products = query.trim().isEmpty
+      final products = (query == null || query.trim().isEmpty)
           ? await _inventory.getAllProducts()
-          : await _inventory.searchProducts(query);
-      final stock = <String, double>{};
+          : await _inventory.searchProducts(query.trim());
+
+      final stockMap = <String, double>{};
       for (final p in products) {
-        stock[p.id] = await _inventory.getStock(p.id);
+        stockMap[p.id] = await _inventory.getStock(p.id);
       }
+
       if (!mounted) return;
       setState(() {
         _products = products;
-        _stock = stock;
+        _stockByProduct = stockMap;
         _loading = false;
       });
     } catch (e) {
@@ -115,14 +123,8 @@ class _PosPageState extends State<PosPage> {
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Add to cart'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add to cart')),
           ],
         );
       },
@@ -139,10 +141,9 @@ class _PosPageState extends State<PosPage> {
       return;
     }
     _cart.addQuickSale(name: name, unitPrice: price, quantity: qty);
-    setState(() {});
   }
 
-  Future<void> _checkout() async {
+  Future<void> _openCheckout() async {
     if (_cart.isEmpty) return;
 
     final result = await showModalBottomSheet<CheckoutResult>(
@@ -161,13 +162,12 @@ class _PosPageState extends State<PosPage> {
     widget.onSaleCompleted?.call();
 
     if (!mounted) return;
-
     final messenger = ScaffoldMessenger.of(context);
     messenger.clearSnackBars();
     messenger.showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 88),
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 96),
         duration: const Duration(seconds: 8),
         content: Text(
           'Sale complete · ${Money.format(result.total)} · ${result.paymentType}'
@@ -191,12 +191,14 @@ class _PosPageState extends State<PosPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: Text(
           'POS',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
               ),
         ),
         actions: [
@@ -229,7 +231,7 @@ class _PosPageState extends State<PosPage> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
             child: GlassPanel(
               borderRadius: 16,
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -244,105 +246,180 @@ class _PosPageState extends State<PosPage> {
               ),
             ),
           ),
-          Expanded(child: _buildCatalogue()),
-          _buildCartBar(),
+          Expanded(child: _buildProductList()),
+          _buildCartPanel(),
         ],
       ),
     );
   }
 
-  Widget _buildCatalogue() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+  Widget _buildProductList() {
+    if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return Center(child: Text(_error!));
+      return Center(
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => _loadProducts(query: _searchController.text),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     if (_products.isEmpty) {
-      return const Center(child: Text('No products. Add stock first.'));
+      return Center(
+        child: GlassPanel(
+          margin: const EdgeInsets.all(24),
+          child: Text(
+            'No products. Add stock first, or use Quick sale.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      );
     }
+
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
       itemCount: _products.length,
       itemBuilder: (context, index) {
         final product = _products[index];
-        final qty = _stock[product.id] ?? 0;
-        final outOfStock = qty <= 0;
+        final stock = _stockByProduct[product.id] ?? 0;
+        final out = stock <= 0;
         return GlassPanel(
           margin: const EdgeInsets.only(bottom: 8),
           borderRadius: 16,
           padding: EdgeInsets.zero,
           child: ListTile(
-            title: Text(
-              product.name,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+            title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Text(
-              '${Money.format(product.sellingPrice)} · stock ${qty <= 0 ? '0' : qty} ${product.unit}',
+              '${Money.format(product.sellingPrice)} · stock ${stock <= 0 ? 0 : stock} ${product.unit}',
             ),
             trailing: IconButton(
               icon: const Icon(Icons.add_shopping_cart),
-              onPressed: outOfStock ? null : () {
-                _cart.addProduct(product);
-                setState(() {});
-              },
+              onPressed: out
+                  ? null
+                  : () => _cart.addProduct(product),
             ),
-            onTap: outOfStock
-                ? null
-                : () {
-                    _cart.addProduct(product);
-                    setState(() {});
-                  },
+            onTap: out ? null : () => _cart.addProduct(product),
           ),
         );
       },
     );
   }
 
-  Widget _buildCartBar() {
-    return ListenableBuilder(
-      listenable: _cart,
-      builder: (context, _) {
-        if (_cart.isEmpty) return const SizedBox.shrink();
-        return GlassPanel(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          borderRadius: 18,
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '${_cart.itemCount} item${_cart.itemCount == 1 ? '' : 's'}',
-                      style: Theme.of(context).textTheme.labelMedium,
+  Widget _buildCartPanel() {
+    return GlassPanel(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+      borderRadius: 18,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: _cart.isEmpty ? 36 : 120,
+            child: _cart.isEmpty
+                ? Center(
+                    child: Text(
+                      'Cart is empty — tap products to add',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    Text(
-                      Money.format(_cart.subtotal),
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
+                  )
+                : ListView.builder(
+                    itemCount: _cart.lines.length,
+                    itemBuilder: (context, index) {
+                      final line = _cart.lines[index];
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              line.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  _cart.clear();
-                  setState(() {});
-                },
-                child: const Text('Clear'),
-              ),
-              FilledButton(
-                onPressed: _checkout,
-                child: const Text('Pay'),
-              ),
-            ],
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline),
+                            onPressed: () {
+                              _cart.setQuantity(line.lineKey, line.quantity - 1);
+                            },
+                          ),
+                          Text(
+                            _fmtQty(line.quantity),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: () {
+                              _cart.setQuantity(line.lineKey, line.quantity + 1);
+                            },
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            Money.format(line.lineTotal),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
           ),
-        );
-      },
+          SafeArea(
+            top: false,
+            bottom: false,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'TOTAL',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Text(
+                        Money.format(_cart.subtotal),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!_cart.isEmpty)
+                  TextButton(
+                    onPressed: () => _cart.clear(),
+                    child: const Text('Clear'),
+                  ),
+                FilledButton.icon(
+                  onPressed: _cart.isEmpty ? null : _openCheckout,
+                  icon: const Icon(Icons.payments),
+                  label: const Text('Pay'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  String _fmtQty(double value) {
+    if (value == value.truncateToDouble()) {
+      return value.toInt().toString();
+    }
+    return value.toStringAsFixed(2);
   }
 }
