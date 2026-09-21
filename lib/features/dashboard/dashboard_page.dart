@@ -5,7 +5,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/day_closing_service.dart';
 import '../../services/expense_service.dart';
-import '../../services/report_service.dart';
 import '../../services/security_service.dart';
 import '../pos/sales_history_page.dart';
 import '../security/lock_screen.dart';
@@ -29,12 +28,11 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  final _reports = ReportService();
   final _expenses = ExpenseService();
   final _dayClose = DayClosingService();
   final _security = SecurityService();
 
-  DaySalesReport? _summary;
+  DaySummary? _summary;
   List<Map<String, dynamic>> _todayExpenses = [];
   bool _loading = true;
   String? _error;
@@ -52,7 +50,7 @@ class _DashboardPageState extends State<DashboardPage> {
     });
     try {
       final now = DateTime.now();
-      final summary = await _reports.getDaySalesReport(now);
+      final summary = await _dayClose.getSummary(now);
       final expenses = await _expenses.listExpenses(day: now);
       if (!mounted) return;
       setState(() {
@@ -96,17 +94,19 @@ class _DashboardPageState extends State<DashboardPage> {
                       },
                       decoration: const InputDecoration(labelText: 'Category'),
                     ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: amountCtrl,
                       decoration: const InputDecoration(labelText: 'Amount'),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       autofocus: true,
                     ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: descCtrl,
                       decoration: const InputDecoration(labelText: 'Description'),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       children: [
@@ -122,14 +122,8 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Save'),
-                ),
+                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
               ],
             );
           },
@@ -148,17 +142,13 @@ class _DashboardPageState extends State<DashboardPage> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
   Future<void> _closeDay() async {
     if (_summary?.isClosed == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Today is already closed')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Today is already closed')));
       return;
     }
 
@@ -168,7 +158,9 @@ class _DashboardPageState extends State<DashboardPage> {
     );
     if (!identityOk || !mounted) return;
 
+    final openingCtrl = TextEditingController(text: '0');
     final cashCtrl = TextEditingController();
+    final mpesaCtrl = TextEditingController(text: _summary != null ? '${_summary!.salesMpesa}' : '0');
     final noteCtrl = TextEditingController();
 
     final ok = await showDialog<bool>(
@@ -180,23 +172,33 @@ class _DashboardPageState extends State<DashboardPage> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (s != null) ...[
                   Text('Sales ${Money.format(s.salesTotal)}'),
-                  const SizedBox(height: 6),
-                  Text('Cash expected ${Money.format(s.cash)}'),
-                  const SizedBox(height: 6),
-                  Text('M-Pesa ${Money.format(s.mpesa)}'),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
+                  Text('Cash sales ${Money.format(s.salesCash)}'),
+                  const SizedBox(height: 8),
+                  Text('M-Pesa sales ${Money.format(s.salesMpesa)}'),
+                  const SizedBox(height: 8),
                   Text('Expenses ${Money.format(s.expensesTotal)}'),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                 ],
                 TextField(
+                  controller: openingCtrl,
+                  decoration: const InputDecoration(labelText: 'Opening cash in till'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 12),
+                TextField(
                   controller: cashCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Cash counted in till',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Cash counted now'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: mpesaCtrl,
+                  decoration: const InputDecoration(labelText: 'M-Pesa confirmed'),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
                 const SizedBox(height: 12),
@@ -209,14 +211,8 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Close day'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Close day')),
           ],
         );
       },
@@ -225,19 +221,18 @@ class _DashboardPageState extends State<DashboardPage> {
     if (ok != true || !mounted) return;
     try {
       await _dayClose.closeDay(
-        cashCounted: Money.parse(cashCtrl.text),
+        day: DateTime.now(),
+        openingCash: Money.parse(openingCtrl.text),
+        countedCash: Money.parse(cashCtrl.text),
+        countedMpesa: Money.parse(mpesaCtrl.text),
         notes: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
       );
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Day closed')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Day closed')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -253,12 +248,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        title: Text(
-          'Home',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
+        title: Text('Home', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
         actions: [
           if (widget.onOpenNotifications != null)
             IconButton(
@@ -278,9 +268,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildBody() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
       return Center(
         child: GlassPanel(
@@ -298,26 +286,13 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     final s = _summary!;
-    final now = DateTime.now();
-    final dateLabel = DateFormat('EEEE, d MMM').format(now);
+    final dateLabel = DateFormat('EEEE, d MMM').format(DateTime.now());
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       children: [
-        Text(
-          _greeting,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                letterSpacing: 1.2,
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        Text(
-          dateLabel,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-        ),
+        Text(_greeting, style: Theme.of(context).textTheme.labelLarge?.copyWith(letterSpacing: 1.2, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700)),
+        Text(dateLabel, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 16),
         GlassPanel(
           borderRadius: 22,
@@ -326,75 +301,26 @@ class _DashboardPageState extends State<DashboardPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "TODAY'S SALES",
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
+              Text("TODAY'S SALES", style: Theme.of(context).textTheme.labelMedium?.copyWith(letterSpacing: 1.2, fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
-              Text(
-                Money.format(s.salesTotal),
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
-                    ),
-              ),
+              Text(Money.format(s.salesTotal), style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.5)),
               const SizedBox(height: 6),
-              Text(
-                s.saleCount == 1
-                    ? '1 sale recorded'
-                    : '${s.saleCount} sales recorded',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
+              Text(s.saleCount == 1 ? '1 sale recorded' : '${s.saleCount} sales recorded', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ],
           ),
         ),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: _metricTile(
-                label: 'Cash',
-                value: Money.format(s.cash),
-                icon: Icons.payments_outlined,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _metricTile(
-                label: 'M-Pesa',
-                value: Money.format(s.mpesa),
-                icon: Icons.phone_android_outlined,
-              ),
-            ),
-          ],
-        ),
+        Row(children: [
+          Expanded(child: _metricTile(label: 'Cash', value: Money.format(s.salesCash), icon: Icons.payments_outlined)),
+          const SizedBox(width: 12),
+          Expanded(child: _metricTile(label: 'M-Pesa', value: Money.format(s.salesMpesa), icon: Icons.phone_android_outlined)),
+        ]),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _metricTile(
-                label: 'Expenses',
-                value: Money.format(s.expensesTotal),
-                icon: Icons.trending_down,
-                warn: s.expensesTotal > 0,
-                onAction: _addExpense,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _metricTile(
-                label: 'Net feel',
-                value: Money.format(s.salesTotal - s.expensesTotal),
-                icon: Icons.insights_outlined,
-              ),
-            ),
-          ],
-        ),
+        Row(children: [
+          Expanded(child: _metricTile(label: 'Expenses', value: Money.format(s.expensesTotal), icon: Icons.trending_down, warn: s.expensesTotal > 0, onAction: _addExpense)),
+          const SizedBox(width: 12),
+          Expanded(child: _metricTile(label: 'Net feel', value: Money.format(s.salesTotal - s.expensesTotal), icon: Icons.insights_outlined)),
+        ]),
         const SizedBox(height: 18),
         GlassPanel(
           borderRadius: 22,
@@ -402,31 +328,14 @@ class _DashboardPageState extends State<DashboardPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'End of day',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
+              Text('End of day', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              Text(
-                s.isClosed
-                    ? 'Today is locked. Come back tomorrow.'
-                    : 'Count the till when you are done selling.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              Text(s.isClosed ? 'Today is locked. Come back tomorrow.' : 'Count the till when you are done selling.', style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 12),
-              FilledButton(
-                onPressed: s.isClosed ? null : _closeDay,
-                child: Text(s.isClosed ? 'Day closed' : 'Close day'),
-              ),
+              FilledButton(onPressed: s.isClosed ? null : _closeDay, child: Text(s.isClosed ? 'Day closed' : 'Close day')),
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const SalesHistoryPage(),
-                    ),
-                  );
+                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SalesHistoryPage()));
                 },
                 child: const Text('Sales history'),
               ),
@@ -435,32 +344,17 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         if (_todayExpenses.isNotEmpty) ...[
           const SizedBox(height: 18),
-          Text(
-            'Today\'s expenses',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
+          Text("Today's expenses", style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           for (final e in _todayExpenses)
             GlassPanel(
               margin: const EdgeInsets.only(bottom: 8),
               borderRadius: 14,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      e['category'] as String? ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  Text(
-                    Money.format((e['amount'] as num?)?.toDouble() ?? 0),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ],
-              ),
+              child: Row(children: [
+                Expanded(child: Text(e['category'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
+                Text(Money.format((e['amount'] as num?)?.toDouble() ?? 0), style: const TextStyle(fontWeight: FontWeight.w800)),
+              ]),
             ),
         ],
       ],
@@ -482,45 +376,23 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: warn ? scheme.error : scheme.primary,
+          Row(children: [
+            Icon(icon, size: 18, color: warn ? scheme.error : scheme.primary),
+            const Spacer(),
+            if (onAction != null)
+              IconButton(
+                tooltip: 'Record expense',
+                onPressed: onAction,
+                icon: Icon(actionIcon, size: 20),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
-              const Spacer(),
-              if (onAction != null)
-                IconButton(
-                  tooltip: 'Record expense',
-                  onPressed: onAction,
-                  icon: Icon(actionIcon, size: 20),
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                ),
-            ],
-          ),
+          ]),
           const SizedBox(height: 8),
-          Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.1,
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
+          Text(label.toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.1, color: scheme.onSurfaceVariant)),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.4,
-                ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          Text(value, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.4), maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       ),
     );
