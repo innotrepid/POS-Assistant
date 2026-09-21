@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/safety/safety_dialogs.dart';
 import '../../core/utils/money.dart';
+import '../../services/business_profile_service.dart';
 import '../../services/sales_service.dart';
 import '../../services/security_service.dart';
 import '../security/lock_screen.dart';
@@ -18,9 +19,11 @@ class ReceiptPage extends StatefulWidget {
 class _ReceiptPageState extends State<ReceiptPage> {
   final _sales = SalesService();
   final _security = SecurityService();
+  final _profiles = BusinessProfileService.instance;
   Map<String, dynamic>? _sale;
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _payments = [];
+  String _shopName = 'Mercate';
   bool _loading = true;
   bool _voiding = false;
   String? _error;
@@ -36,11 +39,13 @@ class _ReceiptPageState extends State<ReceiptPage> {
       final sale = await _sales.getSale(widget.saleId);
       final items = await _sales.getSaleItems(widget.saleId);
       final payments = await _sales.getSalePayments(widget.saleId);
+      final name = await _profiles.getBusinessName();
       if (!mounted) return;
       setState(() {
         _sale = sale;
         _items = items;
         _payments = payments;
+        _shopName = name;
         _loading = false;
         if (sale == null) _error = 'Sale not found';
       });
@@ -58,7 +63,7 @@ class _ReceiptPageState extends State<ReceiptPage> {
     if (sale == null) return;
 
     final status = sale['sale_status'] as String? ?? '';
-    if (status != 'completed') {
+    if (status != 'completed' && status != 'partially_refunded') {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Cannot void a $status sale')),
       );
@@ -76,7 +81,7 @@ class _ReceiptPageState extends State<ReceiptPage> {
           'Sale total ${Money.format(total)}. '
           'Paid ${Money.format(paid)} will be recorded as refunded. '
           '${balance > 0 ? 'Debt ${Money.format(balance)} will be reversed. ' : ''}'
-          'Catalogue stock will be restored once.',
+          'Catalogue stock will be restored.',
       whyItMatters:
           'Voiding cannot be undone. Historical line prices stay on the receipt.',
       affected: 'Sale ${widget.saleId.substring(0, 8)}…',
@@ -101,10 +106,7 @@ class _ReceiptPageState extends State<ReceiptPage> {
 
     final identityOk = await _security.requireUnlock(
       biometricReason: 'Confirm void / refund',
-      promptPin: () => promptPinDialog(
-        context,
-        title: 'PIN to void sale',
-      ),
+      promptPin: () => promptPinDialog(context, title: 'PIN to void sale'),
     );
     if (!identityOk || !mounted) return;
 
@@ -120,7 +122,6 @@ class _ReceiptPageState extends State<ReceiptPage> {
             decoration: const InputDecoration(
               labelText: 'Reason (required)',
               border: OutlineInputBorder(),
-              hintText: 'e.g. wrong items, customer returned goods',
             ),
             maxLines: 2,
           ),
@@ -168,17 +169,15 @@ class _ReceiptPageState extends State<ReceiptPage> {
   @override
   Widget build(BuildContext context) {
     final status = _sale?['sale_status'] as String? ?? '';
-    final canVoid = status == 'completed' && !_voiding;
+    final canVoid =
+        (status == 'completed' || status == 'partially_refunded') && !_voiding;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Receipt'),
         actions: [
           if (canVoid)
-            TextButton(
-              onPressed: _voidSale,
-              child: const Text('Void'),
-            ),
+            TextButton(onPressed: _voidSale, child: const Text('Void')),
         ],
       ),
       body: _buildBody(),
@@ -206,9 +205,23 @@ class _ReceiptPageState extends State<ReceiptPage> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
+        Center(
+          child: Image.asset(
+            'assets/images/mercate_logo.png',
+            height: 56,
+            errorBuilder: (_, __, ___) => Icon(
+              Icons.storefront,
+              size: 48,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
         Text(
-          'POS Assistant',
-          style: Theme.of(context).textTheme.headlineSmall,
+          _shopName,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 4),
@@ -219,10 +232,12 @@ class _ReceiptPageState extends State<ReceiptPage> {
         ),
         if (saleStatus == 'voided') ...[
           const SizedBox(height: 8),
-          const Chip(
-            avatar: Icon(Icons.block, size: 18),
-            label: Text('VOIDED'),
-            backgroundColor: Colors.red,
+          const Center(
+            child: Chip(
+              avatar: Icon(Icons.block, size: 18),
+              label: Text('VOIDED'),
+              backgroundColor: Colors.red,
+            ),
           ),
         ],
         const Divider(height: 32),
@@ -253,7 +268,8 @@ class _ReceiptPageState extends State<ReceiptPage> {
           Text('Payments', style: Theme.of(context).textTheme.titleSmall),
           for (final p in _payments)
             _row(
-              '${p['payment_type']}',
+              '${p['payment_type']}'
+              '${(p['reference'] as String?)?.isNotEmpty == true ? ' · ${p['reference']}' : ''}',
               Money.format((p['amount'] as num?)?.toDouble() ?? 0),
             ),
         ],

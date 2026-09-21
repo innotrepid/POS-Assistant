@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../core/database/app_database.dart';
 
-/// Persists appearance preference: system / light / dark.
+/// Appearance preference — shared meta DB (not per-profile).
 class ThemeService {
   ThemeService({AppDatabase? database})
       : _database = database ?? AppDatabase.instance;
@@ -34,7 +34,7 @@ class ThemeService {
   }
 
   Future<String?> _get(String key) async {
-    final db = await _database.database;
+    final db = await _database.metaDatabase;
     final rows = await db.query(
       'settings',
       where: 'key = ?',
@@ -46,7 +46,7 @@ class ThemeService {
   }
 
   Future<void> _set(String key, String value) async {
-    final db = await _database.database;
+    final db = await _database.metaDatabase;
     await db.insert(
       'settings',
       {'key': key, 'value': value},
@@ -55,7 +55,6 @@ class ThemeService {
   }
 }
 
-/// App-wide theme notifier.
 class ThemeController extends ChangeNotifier {
   ThemeController({ThemeService? service})
       : _service = service ?? ThemeService();

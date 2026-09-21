@@ -59,27 +59,40 @@ class _SuppliersPageState extends State<SuppliersPage> {
   Future<void> _addSupplier() async {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
+    final suppliesCtrl = TextEditingController();
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('Add supplier'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Name'),
-                autofocus: true,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: phoneCtrl,
-                decoration: const InputDecoration(labelText: 'Phone'),
-                keyboardType: TextInputType.phone,
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: phoneCtrl,
+                  decoration: const InputDecoration(labelText: 'Phone'),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: suppliesCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'What they supply',
+                    hintText: 'e.g. sukuma, tomatoes, onions',
+                    helperText: 'Comma-separated. Used when receiving goods.',
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -98,9 +111,15 @@ class _SuppliersPageState extends State<SuppliersPage> {
     if (ok != true) return;
 
     try {
+      final supplies = suppliesCtrl.text
+          .split(RegExp(r'[,;\n|]'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
       await _suppliers.createSupplier(
         name: nameCtrl.text,
         phone: phoneCtrl.text,
+        supplies: supplies,
       );
       await _load();
     } catch (e) {
@@ -175,7 +194,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
         child: GlassPanel(
           margin: const EdgeInsets.all(24),
           child: Text(
-            'No suppliers yet.\nTap + to add, then Receive goods.',
+            'No suppliers yet.\nTap + to add (include what they supply),\nthen Receive goods.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -236,9 +255,15 @@ class _SuppliersPageState extends State<SuppliersPage> {
                         ),
                       ),
                       if (s.phone != null && s.phone!.isNotEmpty)
+                        Text(s.phone!, style: Theme.of(context).textTheme.bodySmall),
+                      if (s.supplies.isNotEmpty)
                         Text(
-                          s.phone!,
-                          style: Theme.of(context).textTheme.bodySmall,
+                          'Supplies: ${s.supplies.join(', ')}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: scheme.primary,
+                              ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                     ],
                   ),
