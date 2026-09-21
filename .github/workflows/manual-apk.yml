@@ -1,11 +1,10 @@
 name: Manual APK Build
 
-# Open Actions → "Manual APK Build" → blue "Run workflow" button (top right)
 on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: "APK type"
+        description: APK type
         required: true
         default: release
         type: choice
@@ -19,27 +18,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
       - name: Ensure Android platform
-        run: |
-          if [ ! -d android ]; then
-            flutter create . --project-name mercate --org com.aetherion --platforms=android
-          else
-            echo "android/ already present"
-          fi
+        run: flutter create . --project-name mercate --org com.aetherion --platforms=android
 
-      - name: Configure Mercate id, label, icons
+      - name: Configure Mercate
         run: |
           set -e
           for f in android/app/build.gradle android/app/build.gradle.kts; do
@@ -62,39 +59,44 @@ jobs:
           fi
           if [ -f assets/images/mercate_logo.png ] && [ -s assets/images/mercate_logo.png ]; then
             pip install pillow -q
-            python3 -c "
-from pathlib import Path
-from PIL import Image
-img = Image.open('assets/images/mercate_logo.png').convert('RGBA')
-for folder, size in {'mipmap-mdpi':48,'mipmap-hdpi':72,'mipmap-xhdpi':96,'mipmap-xxhdpi':144,'mipmap-xxxhdpi':192}.items():
-    d = Path('android/app/src/main/res')/folder
-    d.mkdir(parents=True, exist_ok=True)
-    r = img.resize((size, size), Image.Resampling.LANCZOS)
-    r.save(d/'ic_launcher.png')
-    r.save(d/'ic_launcher_round.png')
-print('icons ok')
-"
+            python3 <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          img = Image.open("assets/images/mercate_logo.png").convert("RGBA")
+          sizes = {
+              "mipmap-mdpi": 48,
+              "mipmap-hdpi": 72,
+              "mipmap-xhdpi": 96,
+              "mipmap-xxhdpi": 144,
+              "mipmap-xxxhdpi": 192,
+          }
+          for folder, size in sizes.items():
+              d = Path("android/app/src/main/res") / folder
+              d.mkdir(parents=True, exist_ok=True)
+              r = img.resize((size, size), Image.Resampling.LANCZOS)
+              r.save(d / "ic_launcher.png")
+              r.save(d / "ic_launcher_round.png")
+          print("icons ok")
+          PY
           fi
 
-      - run: flutter pub get
-
-      - name: Analyze (report only)
-        continue-on-error: true
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze.txt | tail -80
+      - name: Pub get
+        run: flutter pub get
 
       - name: Build APK
         env:
           BUILD_TYPE: ${{ github.event.inputs.build_type }}
         run: |
-          if [ "${BUILD_TYPE}" = "debug" ]; then
+          if [ "$BUILD_TYPE" = "debug" ]; then
             flutter build apk --debug
           else
             flutter build apk --release
           fi
 
-      - uses: actions/upload-artifact@v4
-        if: success()
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
           name: mercate-apk
           path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
           retention-days: 14
