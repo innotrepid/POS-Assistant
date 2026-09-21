@@ -36,7 +36,7 @@ jobs:
       - name: Ensure Android platform
         run: flutter create . --project-name mercate --org com.aetherion --platforms=android
 
-      - name: Configure Mercate
+      - name: Configure Mercate applicationId and label
         run: |
           set -e
           for f in android/app/build.gradle android/app/build.gradle.kts; do
@@ -53,32 +53,9 @@ jobs:
             grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
             grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
           fi
-          mkdir -p assets/images
-          if [ -f "assets/images/Mercate Logo.png" ] && [ ! -s "assets/images/mercate_logo.png" ]; then
-            cp "assets/images/Mercate Logo.png" assets/images/mercate_logo.png || true
-          fi
-          if [ -f assets/images/mercate_logo.png ] && [ -s assets/images/mercate_logo.png ]; then
-            pip install pillow -q
-            python3 <<'PY'
-          from pathlib import Path
-          from PIL import Image
-          img = Image.open("assets/images/mercate_logo.png").convert("RGBA")
-          sizes = {
-              "mipmap-mdpi": 48,
-              "mipmap-hdpi": 72,
-              "mipmap-xhdpi": 96,
-              "mipmap-xxhdpi": 144,
-              "mipmap-xxxhdpi": 192,
-          }
-          for folder, size in sizes.items():
-              d = Path("android/app/src/main/res") / folder
-              d.mkdir(parents=True, exist_ok=True)
-              r = img.resize((size, size), Image.Resampling.LANCZOS)
-              r.save(d / "ic_launcher.png")
-              r.save(d / "ic_launcher_round.png")
-          print("icons ok")
-          PY
-          fi
+
+      - name: Generate launcher icons
+        run: python3 scripts/gen_launcher_icons.py
 
       - name: Pub get
         run: flutter pub get

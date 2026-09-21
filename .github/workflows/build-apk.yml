@@ -19,6 +19,7 @@ on:
       - pubspec.yaml
       - pubspec.lock
       - assets/**
+      - scripts/**
       - .github/workflows/build-apk.yml
 
 concurrency:
@@ -49,7 +50,7 @@ jobs:
       - name: Ensure Android platform
         run: flutter create . --project-name mercate --org com.aetherion --platforms=android
 
-      - name: Configure Mercate
+      - name: Configure Mercate applicationId and label
         run: |
           set -e
           for f in android/app/build.gradle android/app/build.gradle.kts; do
@@ -67,73 +68,12 @@ jobs:
             grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
             grep -q "POST_NOTIFICATIONS" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
           fi
-          mkdir -p assets/images
-          if [ -f "assets/images/Mercate Logo.png" ] && [ ! -s "assets/images/mercate_logo.png" ]; then
-            cp "assets/images/Mercate Logo.png" assets/images/mercate_logo.png || true
-          fi
-          if [ -f assets/images/mercate_logo.png ] && [ -s assets/images/mercate_logo.png ]; then
-            pip install pillow -q
-            python3 <<'PY'
-          from pathlib import Path
-          from PIL import Image
-          img = Image.open("assets/images/mercate_logo.png").convert("RGBA")
-          sizes = {
-              "mipmap-mdpi": 48,
-              "mipmap-hdpi": 72,
-              "mipmap-xhdpi": 96,
-              "mipmap-xxhdpi": 144,
-              "mipmap-xxxhdpi": 192,
-          }
-          for folder, size in sizes.items():
-              d = Path("android/app/src/main/res") / folder
-              d.mkdir(parents=True, exist_ok=True)
-              r = img.resize((size, size), Image.Resampling.LANCZOS)
-              r.save(d / "ic_launcher.png")
-              r.save(d / "ic_launcher_round.png")
-          print("icons ok")
-          PY
-          fi
+
+      - name: Generate launcher icons
+        run: python3 scripts/gen_launcher_icons.py
 
       - name: Desugar
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-          path = Path("android/app/build.gradle.kts")
-          if not path.exists():
-              path = Path("android/app/build.gradle")
-          if not path.exists():
-              raise SystemExit(0)
-          text = path.read_text()
-          is_kts = path.name.endswith(".kts")
-          if is_kts:
-              if "isCoreLibraryDesugaringEnabled" not in text and "compileOptions {" in text:
-                  text = text.replace(
-                      "compileOptions {",
-                      "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
-                      1,
-                  )
-              if "desugar_jdk_libs" not in text and "dependencies {" in text:
-                  text = text.replace(
-                      "dependencies {",
-                      'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n',
-                      1,
-                  )
-          else:
-              if "coreLibraryDesugaringEnabled" not in text and "compileOptions {" in text:
-                  text = text.replace(
-                      "compileOptions {",
-                      "compileOptions {\n        coreLibraryDesugaringEnabled true",
-                      1,
-                  )
-              if "desugar_jdk_libs" not in text and "dependencies {" in text:
-                  text = text.replace(
-                      "dependencies {",
-                      "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n",
-                      1,
-                  )
-          path.write_text(text)
-          print("desugar ok")
-          PY
+        run: python3 scripts/patch_desugar.py
 
       - name: Pub get
         run: flutter pub get
