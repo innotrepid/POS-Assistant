@@ -60,6 +60,9 @@ jobs:
       - name: Generate launcher icons
         run: python3 scripts/gen_launcher_icons.py
 
+      - name: Normalize desugar (disable half-config)
+        run: python3 scripts/patch_desugar.py
+
       - name: Pub get
         run: flutter pub get
 

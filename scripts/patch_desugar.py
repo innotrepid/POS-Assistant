@@ -1,41 +1,46 @@
 #!/usr/bin/env python3
+"""Ensure core library desugaring is either fully configured or fully off.
+
+Newer Flutter templates often have no app-level dependencies {} block. Enabling
+isCoreLibraryDesugaringEnabled without adding coreLibraryDesugaring(...) makes
+Gradle fail. We do not need desugar for current deps, so we prefer OFF unless
+both flag + dependency can be set cleanly.
+"""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-path = ROOT / "android" / "app" / "build.gradle.kts"
-if not path.exists():
-    path = ROOT / "android" / "app" / "build.gradle"
-if not path.exists():
-    print("No gradle file; skip desugar")
+candidates = [
+    ROOT / "android" / "app" / "build.gradle.kts",
+    ROOT / "android" / "app" / "build.gradle",
+]
+path = next((p for p in candidates if p.exists()), None)
+if path is None:
+    print("No app gradle file; skip")
     raise SystemExit(0)
 
 text = path.read_text()
-is_kts = path.name.endswith(".kts")
+is_kts = path.suffix == ".kts"
+
+# Always strip any half-applied desugar enable so builds stay green.
+# (We currently do not require desugaring.)
 if is_kts:
-    if "isCoreLibraryDesugaringEnabled" not in text and "compileOptions {" in text:
-        text = text.replace(
-            "compileOptions {",
-            "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
-            1,
-        )
-    if "desugar_jdk_libs" not in text and "dependencies {" in text:
-        text = text.replace(
-            "dependencies {",
-            'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n',
-            1,
-        )
+    text = text.replace(
+        "isCoreLibraryDesugaringEnabled = true\n",
+        "",
+    )
+    text = text.replace(
+        "isCoreLibraryDesugaringEnabled = true",
+        "false  // mercate: desugar off",
+    )
 else:
-    if "coreLibraryDesugaringEnabled" not in text and "compileOptions {" in text:
-        text = text.replace(
-            "compileOptions {",
-            "compileOptions {\n        coreLibraryDesugaringEnabled true",
-            1,
-        )
-    if "desugar_jdk_libs" not in text and "dependencies {" in text:
-        text = text.replace(
-            "dependencies {",
-            "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n",
-            1,
-        )
+    text = text.replace(
+        "coreLibraryDesugaringEnabled true\n",
+        "",
+    )
+    text = text.replace(
+        "coreLibraryDesugaringEnabled true",
+        "coreLibraryDesugaringEnabled false",
+    )
+
 path.write_text(text)
-print("Desugar patch applied")
+print(f"Desugar normalized (off) in {path.name}")
