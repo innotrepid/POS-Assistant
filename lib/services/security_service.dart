@@ -6,7 +6,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../core/database/app_database.dart';
 
-/// App lock: optional PIN + biometric (fingerprint / face).
+/// App lock: optional PIN + biometric. Stored in shared meta DB (all profiles).
 class SecurityService {
   SecurityService({
     AppDatabase? database,
@@ -81,7 +81,7 @@ class SecurityService {
   }
 
   Future<bool> authenticateBiometric({
-    String reason = 'Unlock POS Assistant',
+    String reason = 'Unlock Mercate',
   }) async {
     try {
       return await _localAuth.authenticate(
@@ -97,7 +97,6 @@ class SecurityService {
     }
   }
 
-  /// Unlock via biometric (if preferred & available) or returns false to use PIN UI.
   Future<bool> tryBiometricUnlock() async {
     if (!(await isLockEnabled())) return true;
     if (!(await isBiometricPreferred())) return false;
@@ -105,13 +104,11 @@ class SecurityService {
     return authenticateBiometric();
   }
 
-  /// Full unlock: biometric then PIN fallback handled by UI.
   Future<bool> unlockWithPin(String pin) async {
     if (!(await isLockEnabled())) return true;
     return verifyPin(pin);
   }
 
-  /// Gate sensitive actions (day close, profile, future refunds).
   Future<bool> requireUnlock({
     required Future<bool> Function() promptPin,
     String biometricReason = 'Confirm it is you',
@@ -126,12 +123,12 @@ class SecurityService {
   }
 
   String _hash(String pin) {
-    final bytes = utf8.encode('pos_assistant_v1|$pin');
+    final bytes = utf8.encode('mercate_v1|$pin');
     return sha256.convert(bytes).toString();
   }
 
   Future<String?> _get(String key) async {
-    final db = await _database.database;
+    final db = await _database.metaDatabase;
     final rows = await db.query(
       'settings',
       where: 'key = ?',
@@ -143,7 +140,7 @@ class SecurityService {
   }
 
   Future<void> _set(String key, String value) async {
-    final db = await _database.database;
+    final db = await _database.metaDatabase;
     await db.insert(
       'settings',
       {'key': key, 'value': value},

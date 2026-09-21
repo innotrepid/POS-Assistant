@@ -19,6 +19,7 @@ class SupplierService {
     String? email,
     String? location,
     String? notes,
+    List<String> supplies = const [],
   }) async {
     if (name.trim().isEmpty) {
       throw ArgumentError('Supplier name is required.');
@@ -32,6 +33,10 @@ class SupplierService {
       email: email?.trim(),
       location: location?.trim(),
       notes: notes?.trim(),
+      supplies: supplies
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList(),
       active: true,
       createdAt: now,
       updatedAt: now,
@@ -40,6 +45,22 @@ class SupplierService {
     final db = await _database.database;
     await db.insert('suppliers', supplier.toMap());
     return supplier;
+  }
+
+  Future<void> updateSupplies(String supplierId, List<String> supplies) async {
+    final db = await _database.database;
+    await db.update(
+      'suppliers',
+      {
+        'supplies': supplies
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .join('|'),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [supplierId],
+    );
   }
 
   Future<Supplier?> getSupplier(String id) async {

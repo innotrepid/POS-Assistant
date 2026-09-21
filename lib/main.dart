@@ -8,6 +8,7 @@ import 'features/customers/customers_page.dart';
 import 'features/dashboard/dashboard_page.dart';
 import 'features/inventory/inventory_page.dart';
 import 'features/notifications/notifications_page.dart';
+import 'features/onboarding/onboarding_page.dart';
 import 'features/pos/pos_page.dart';
 import 'features/reports/reports_page.dart';
 import 'features/security/lock_screen.dart';
@@ -24,7 +25,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await AppDatabase.instance.database;
+    await AppDatabase.instance.metaDatabase;
+    final profiles = BusinessProfileService.instance;
+    if (await profiles.hasCompletedOnboarding()) {
+      final id = await profiles.getProfileId();
+      await AppDatabase.instance.useProfile(id);
+    }
   } catch (_) {}
 
   await themeController.load();
@@ -62,7 +68,9 @@ class _RootGate extends StatefulWidget {
 
 class _RootGateState extends State<_RootGate> {
   final _security = SecurityService();
+  final _profiles = BusinessProfileService.instance;
   bool _loading = true;
+  bool _needsOnboarding = false;
   bool _locked = false;
 
   @override
@@ -73,16 +81,26 @@ class _RootGateState extends State<_RootGate> {
 
   Future<void> _check() async {
     try {
+      final done = await _profiles.hasCompletedOnboarding();
+      if (!done) {
+        if (!mounted) return;
+        setState(() {
+          _needsOnboarding = true;
+          _loading = false;
+        });
+        return;
+      }
       final enabled = await _security.isLockEnabled();
       if (!mounted) return;
       setState(() {
+        _needsOnboarding = false;
         _locked = enabled;
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _locked = false;
+        _needsOnboarding = true;
         _loading = false;
       });
     }
@@ -93,6 +111,16 @@ class _RootGateState extends State<_RootGate> {
     if (_loading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_needsOnboarding) {
+      return OnboardingPage(
+        onCompleted: () {
+          setState(() {
+            _needsOnboarding = false;
+            _locked = false;
+          });
+        },
       );
     }
     if (_locked) {
@@ -131,18 +159,34 @@ class _AppShellState extends State<AppShell> {
   ProfileFeatures _features = ProfileFeatures.simpleCore;
   final _notifications = NotificationService();
   final _scanner = AlertScannerService();
-  final _profiles = BusinessProfileService();
+  final _profiles = BusinessProfileService.instance;
 
   @override
   void initState() {
     super.initState();
+    _profiles.addListener(_onProfileChanged);
+    _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _profiles.removeListener(_onProfileChanged);
+    super.dispose();
+  }
+
+  void _onProfileChanged() {
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
     try {
       final p = await _profiles.getProfile();
-      if (mounted) setState(() => _features = p.features);
+      if (mounted) {
+        setState(() {
+          _features = p.features;
+          selectedIndex = 0;
+        });
+      }
     } catch (_) {}
     try {
       await _scanner.scan();
@@ -255,13 +299,15 @@ class _AppShellState extends State<AppShell> {
       selectedIndex = 0;
     }
 
-    final currentId = visible[selectedIndex].id;
+    final currentId = visible.isEmpty ? 'home' : visible[selectedIndex].id;
     final showAssistantFab = currentId != 'pos';
 
     return Scaffold(
       extendBody: true,
       body: GlassScaffoldBody(
-        child: visible[selectedIndex].page,
+        child: visible.isEmpty
+            ? const Center(child: Text('No tabs for this profile'))
+            : visible[selectedIndex].page,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: showAssistantFab
@@ -272,16 +318,18 @@ class _AppShellState extends State<AppShell> {
               child: const Icon(Icons.auto_awesome),
             )
           : null,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() => selectedIndex = index);
-          _refreshUnread();
-        },
-        destinations: [
-          for (final i in visible) i.destination,
-        ],
-      ),
+      bottomNavigationBar: visible.isEmpty
+          ? null
+          : NavigationBar(
+              selectedIndex: selectedIndex,
+              onDestinationSelected: (index) {
+                setState(() => selectedIndex = index);
+                _refreshUnread();
+              },
+              destinations: [
+                for (final i in visible) i.destination,
+              ],
+            ),
     );
   }
 }
