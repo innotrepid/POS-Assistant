@@ -28,7 +28,7 @@ class PdfReportBuilder {
           pw.Header(
             level: 0,
             child: pw.Text(
-              'POS Assistant — Business report',
+              'Mercate — Business report',
               style: pw.TextStyle(
                 fontSize: 18,
                 fontWeight: pw.FontWeight.bold,
@@ -48,61 +48,29 @@ class PdfReportBuilder {
           pw.SizedBox(height: 8),
           _kv('Sales count', '${day.saleCount}'),
           _kv('Sales total', Money.format(day.salesTotal)),
-          _kv('Paid', Money.format(day.paidTotal)),
-          _kv('New credit', Money.format(day.creditTotal)),
-          _kv('Cash', Money.format(day.cash)),
-          _kv('M-Pesa', Money.format(day.mpesa)),
-          _kv('Card', Money.format(day.card)),
-          if (day.other > 0) _kv('Other', Money.format(day.other)),
-          _kv('Est. cost of goods', Money.format(day.estimatedCost)),
-          _kv('Gross profit (est.)', Money.format(day.grossProfit)),
-          _kv('Expenses', Money.format(day.expensesTotal)),
-          pw.SizedBox(height: 20),
+          _kv('Cash', Money.format(day.salesCash)),
+          _kv('M-Pesa', Money.format(day.salesMpesa)),
+          _kv('Credit', Money.format(day.salesCredit)),
 
+          pw.SizedBox(height: 16),
           pw.Text(
-            'Stock on hand',
+            'Stock',
             style: pw.TextStyle(
               fontSize: 14,
               fontWeight: pw.FontWeight.bold,
             ),
           ),
           pw.SizedBox(height: 8),
-          _kv('Stock value (at cost)', Money.format(stockValue)),
-          pw.SizedBox(height: 6),
-          if (stock.isEmpty)
-            pw.Text('No products')
-          else
-            pw.TableHelper.fromTextArray(
-              headers: ['Product', 'Qty', 'Cost', 'Value'],
-              data: stock
-                  .take(40)
-                  .map(
-                    (r) => [
-                      r.name,
-                      _qty(r.quantity),
-                      r.costPrice == null
-                          ? '-'
-                          : Money.format(r.costPrice!),
-                      Money.format(r.stockValue),
-                    ],
-                  )
-                  .toList(),
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              cellStyle: const pw.TextStyle(fontSize: 9),
-              headerDecoration: const pw.BoxDecoration(
-                color: PdfColors.grey300,
+          _kv('Stock value (cost)', Money.format(stockValue)),
+          ...stock.take(40).map(
+                (r) => _kv(
+                  '${r.name} (${r.quantity} ${r.unit})',
+                  Money.format(r.stockValue),
+                ),
               ),
-            ),
-          if (stock.length > 40)
-            pw.Padding(
-              padding: const pw.EdgeInsets.only(top: 4),
-              child: pw.Text(
-                '... and ${stock.length - 40} more products',
-                style: const pw.TextStyle(fontSize: 9),
-              ),
-            ),
-          pw.SizedBox(height: 20),
+          if (stock.isEmpty) pw.Text('No stock'),
 
+          pw.SizedBox(height: 16),
           pw.Text(
             'Debtors',
             style: pw.TextStyle(
@@ -116,8 +84,8 @@ class PdfReportBuilder {
                 (d) => _kv(d.name, Money.format(d.balance)),
               ),
           if (debtors.isEmpty) pw.Text('None'),
-          pw.SizedBox(height: 16),
 
+          pw.SizedBox(height: 16),
           pw.Text(
             'Creditors',
             style: pw.TextStyle(
@@ -134,7 +102,7 @@ class PdfReportBuilder {
 
           pw.SizedBox(height: 24),
           pw.Text(
-            'Offline report · POS Assistant',
+            'Offline report · Mercate Assistant',
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
           ),
         ],
@@ -158,16 +126,9 @@ class PdfReportBuilder {
     );
   }
 
-  String _qty(double v) {
-    if (v == v.truncateToDouble()) return v.toInt().toString();
-    return v.toStringAsFixed(2);
-  }
-
   String _nowLabel() {
     final n = DateTime.now();
-    return '${n.year}-${_2(n.month)}-${_2(n.day)} '
-        '${_2(n.hour)}:${_2(n.minute)}';
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')} '
+        '${n.hour.toString().padLeft(2, '0')}:${n.minute.toString().padLeft(2, '0')}';
   }
-
-  String _2(int n) => n.toString().padLeft(2, '0');
 }
