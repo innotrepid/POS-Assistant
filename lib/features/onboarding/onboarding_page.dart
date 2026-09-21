@@ -116,9 +116,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   child: GlassPanel(
                     accent: _selected == p.id,
                     padding: EdgeInsets.zero,
-                    child: RadioListTile<BusinessProfileId>(
-                      value: p.id,
-                      groupValue: _selected,
+                    child: ListTile(
                       title: Text(
                         p.label,
                         style: const TextStyle(fontWeight: FontWeight.w600),
@@ -128,7 +126,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      onChanged: (v) => setState(() => _selected = v),
+                      selected: _selected == p.id,
+                      trailing: _selected == p.id
+                          ? Icon(Icons.check_circle,
+                              color: Theme.of(context).colorScheme.primary)
+                          : null,
+                      onTap: () => setState(() => _selected = p.id),
                     ),
                   ),
                 ),

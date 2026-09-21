@@ -12,7 +12,7 @@ class BusinessProfilePage extends StatefulWidget {
 }
 
 class _BusinessProfilePageState extends State<BusinessProfilePage> {
-  final _service = BusinessProfileService();
+  final _service = BusinessProfileService.instance;
   final _nameCtrl = TextEditingController();
   BusinessProfile? _current;
   bool _loading = true;
@@ -80,7 +80,11 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
       setState(() => _current = profile);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Profile: ${profile.label}')),
+        SnackBar(
+          content: Text(
+            'Switched to ${profile.label}. Stock and customers for this profile only.',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -140,14 +144,21 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Tap a profile. Ask the assistant to explain the difference.',
+                      'Each type has its own stock, sales and customers. '
+                      'Mama mboga has no Suppliers tab; duka and others do.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 8),
                     for (final p in BusinessProfile.all)
                       ListTile(
                         title: Text(p.label),
-                        subtitle: p.enabled ? null : const Text('Coming later'),
+                        subtitle: p.enabled
+                            ? Text(
+                                p.features.suppliers
+                                    ? 'Includes suppliers'
+                                    : 'No suppliers tab',
+                              )
+                            : const Text('Coming later'),
                         enabled: p.enabled,
                         selected: _current?.id == p.id,
                         trailing: _current?.id == p.id

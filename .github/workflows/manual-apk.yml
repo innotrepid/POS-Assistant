@@ -1,5 +1,6 @@
-name: Build APK
+name: Manual APK Build
 
+# Open Actions → "Manual APK Build" → blue "Run workflow" button (top right)
 on:
   workflow_dispatch:
     inputs:
@@ -11,18 +12,6 @@ on:
         options:
           - release
           - debug
-  push:
-    branches: [foundation]
-    paths:
-      - "lib/**"
-      - "pubspec.yaml"
-      - "pubspec.lock"
-      - "assets/**"
-      - ".github/workflows/build-apk.yml"
-
-concurrency:
-  group: build-apk-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   apk:
@@ -47,8 +36,7 @@ jobs:
           if [ ! -d android ]; then
             flutter create . --project-name mercate --org com.aetherion --platforms=android
           else
-            # Only add android if missing files — do not wipe existing
-            flutter create . --project-name mercate --org com.aetherion --platforms=android
+            echo "android/ already present"
           fi
 
       - name: Configure Mercate id, label, icons
@@ -67,7 +55,6 @@ jobs:
             sed -i 's/android:label="[^"]*"/android:label="Mercate"/' "$MANIFEST"
             grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
             grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
-            grep -q "POST_NOTIFICATIONS" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
           fi
           mkdir -p assets/images
           if [ -f "assets/images/Mercate Logo.png" ] && [ ! -s "assets/images/mercate_logo.png" ]; then
@@ -89,42 +76,16 @@ print('icons ok')
 "
           fi
 
-      - name: Desugar (if gradle present)
-        run: |
-          python3 << 'PY'
-          from pathlib import Path
-          path = Path("android/app/build.gradle.kts")
-          if not path.exists():
-              path = Path("android/app/build.gradle")
-          if not path.exists():
-              raise SystemExit(0)
-          text = path.read_text()
-          is_kts = path.name.endswith(".kts")
-          if is_kts:
-              if "isCoreLibraryDesugaringEnabled" not in text and "compileOptions {" in text:
-                  text = text.replace("compileOptions {", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true", 1)
-              if "desugar_jdk_libs" not in text and "dependencies {" in text:
-                  text = text.replace("dependencies {", 'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n', 1)
-          else:
-              if "coreLibraryDesugaringEnabled" not in text and "compileOptions {" in text:
-                  text = text.replace("compileOptions {", "compileOptions {\n        coreLibraryDesugaringEnabled true", 1)
-              if "desugar_jdk_libs" not in text and "dependencies {" in text:
-                  text = text.replace("dependencies {", "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n", 1)
-          path.write_text(text)
-          print("desugar ok")
-          PY
-
       - run: flutter pub get
 
       - name: Analyze (report only)
         continue-on-error: true
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze.txt | tail -100
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze.txt | tail -80
 
       - name: Build APK
         env:
-          BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
+          BUILD_TYPE: ${{ github.event.inputs.build_type }}
         run: |
-          echo "Building Mercate (${BUILD_TYPE})"
           if [ "${BUILD_TYPE}" = "debug" ]; then
             flutter build apk --debug
           else
@@ -136,13 +97,4 @@ print('icons ok')
         with:
           name: mercate-apk
           path: build/app/outputs/flutter-apk/*.apk
-          if-no-files-found: error
           retention-days: 14
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: analyze-log
-          path: analyze.txt
-          if-no-files-found: ignore
-          retention-days: 7
