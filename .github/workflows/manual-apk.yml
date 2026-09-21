@@ -54,6 +54,9 @@ jobs:
             grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
           fi
 
+      - name: Install Pillow
+        run: python3 -m pip install pillow --break-system-packages --quiet
+
       - name: Generate launcher icons
         run: python3 scripts/gen_launcher_icons.py
 
