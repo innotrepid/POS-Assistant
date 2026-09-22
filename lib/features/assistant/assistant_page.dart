@@ -31,9 +31,10 @@ class _AssistantPageState extends State<AssistantPage> {
   final List<_ChatMessage> _messages = [
     const _ChatMessage(
       text:
-          'Hi — I am your Mercate business partner (offline).\n'
-          'Ask how you did today, who is overdue, best sellers, '
-          'or what is not moving. I can offer Call / SMS — you always confirm.',
+          'Hi — Mercate offline partner.\n'
+          'Ask about sales or debt, or say "Record that John paid 500 cash" / '
+          '"Add 10 of sugar" / "Mary promised Friday". '
+          'Writes only happen after you Confirm.',
       fromUser: false,
     ),
   ];
@@ -103,10 +104,45 @@ class _AssistantPageState extends State<AssistantPage> {
   }
 
   Future<void> _runAction(AssistantAction action) async {
+    if (action.kind == AssistantActionKind.cancelWrite) {
+      setState(() {
+        _messages.add(
+          const _ChatMessage(text: 'Cancelled — nothing was saved.', fromUser: false),
+        );
+      });
+      _scrollToEnd();
+      return;
+    }
+
+    if (action.kind == AssistantActionKind.confirmWrite) {
+      final kind = action.writeKind;
+      final payload = action.writePayload;
+      if (kind == null || payload == null) return;
+      setState(() => _busy = true);
+      try {
+        final result = await _assistant.executeWrite(kind, payload);
+        if (!mounted) return;
+        setState(() {
+          _messages.add(_ChatMessage(text: result, fromUser: false));
+          _busy = false;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _messages.add(
+            _ChatMessage(text: 'Could not save: $e', fromUser: false),
+          );
+          _busy = false;
+        });
+      }
+      _scrollToEnd();
+      return;
+    }
+
     final phone = action.phone?.trim();
     if (phone == null || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No phone number on this contact')),
+        const SnackBar(content: Text('No phone number')),
       );
       return;
     }
@@ -117,9 +153,8 @@ class _AssistantPageState extends State<AssistantPage> {
         builder: (context) => AlertDialog(
           title: const Text('Open phone dialer?'),
           content: Text(
-            'Mercate will open the dialer for ${action.customerName ?? phone}.\n'
-            'Number: $phone\n\n'
-            'The call is not placed until you press Call in the dialer.',
+            'Open dialer for ${action.customerName ?? phone}\n$phone\n\n'
+            'Call is not placed until you press Call in the dialer.',
           ),
           actions: [
             TextButton(
@@ -134,17 +169,18 @@ class _AssistantPageState extends State<AssistantPage> {
         ),
       );
       if (ok != true || !mounted) return;
-      final uri = Uri(scheme: 'tel', path: phone);
-      if (!await launchUrl(uri)) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open dialer')),
+      await launchUrl(Uri(scheme: 'tel', path: phone));
+      if (action.customerId != null) {
+        await _assistant.logCallOrSmsResult(
+          customerId: action.customerId!,
+          customerName: action.customerName ?? phone,
+          channel: 'call',
+          result: 'dialer_opened',
         );
       }
       return;
     }
 
-    // SMS — show body, then open composer
     final body = action.smsBody ?? '';
     final ok = await showDialog<bool>(
       context: context,
@@ -152,9 +188,7 @@ class _AssistantPageState extends State<AssistantPage> {
         title: const Text('Open SMS?'),
         content: SingleChildScrollView(
           child: Text(
-            'To: ${action.customerName ?? phone}\n'
-            'Number: $phone\n\n'
-            'Message:\n$body\n\n'
+            'To: ${action.customerName ?? phone}\n$phone\n\n$body\n\n'
             'Nothing is sent until you press Send in Messages.',
           ),
         ),
@@ -171,15 +205,19 @@ class _AssistantPageState extends State<AssistantPage> {
       ),
     );
     if (ok != true || !mounted) return;
-    final uri = Uri(
-      scheme: 'sms',
-      path: phone,
-      queryParameters: body.isEmpty ? null : {'body': body},
+    await launchUrl(
+      Uri(
+        scheme: 'sms',
+        path: phone,
+        queryParameters: body.isEmpty ? null : {'body': body},
+      ),
     );
-    if (!await launchUrl(uri)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open Messages')),
+    if (action.customerId != null) {
+      await _assistant.logCallOrSmsResult(
+        customerId: action.customerId!,
+        customerName: action.customerName ?? phone,
+        channel: 'sms',
+        result: 'composer_opened',
       );
     }
   }
@@ -253,11 +291,17 @@ class _AssistantPageState extends State<AssistantPage> {
                             children: [
                               for (final a in m.actions)
                                 FilledButton.tonalIcon(
-                                  onPressed: () => _runAction(a),
+                                  onPressed: _busy ? null : () => _runAction(a),
                                   icon: Icon(
                                     a.kind == AssistantActionKind.call
                                         ? Icons.call
-                                        : Icons.sms_outlined,
+                                        : a.kind == AssistantActionKind.sms
+                                            ? Icons.sms_outlined
+                                            : a.kind ==
+                                                    AssistantActionKind
+                                                        .confirmWrite
+                                                ? Icons.check
+                                                : Icons.close,
                                     size: 18,
                                   ),
                                   label: Text(a.label),
@@ -282,7 +326,7 @@ class _AssistantPageState extends State<AssistantPage> {
                     child: TextField(
                       controller: _controller,
                       decoration: const InputDecoration(
-                        hintText: 'Ask about sales, debt, stock…',
+                        hintText: 'Ask or record a payment…',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
