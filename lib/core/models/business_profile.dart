@@ -76,7 +76,6 @@ class ProfileFeatures {
     this.produceUnits = false,
   });
 
-  /// Mama mboga — focused produce shop (no suppliers tab).
   static const mamaMboga = ProfileFeatures(
     sales: true,
     stock: true,
@@ -174,9 +173,7 @@ class ProfileFeatures {
     barcodes: true,
     categories: true,
     weightSales: true,
-    batchesExpiry: true,
     variants: true,
-    serialTracking: true,
     quotations: true,
     advancedAudit: true,
   );
@@ -236,8 +233,8 @@ class BusinessProfile {
       id: BusinessProfileId.mamaMboga,
       label: 'Mama mboga / fresh produce',
       description:
-          'Sell by kg, bunch, heap or piece. Stock, cash, M-Pesa, customer '
-          'credit and day close — no supplier clutter.',
+          'Sell by kg, bunch, heap or piece. Own stock only — no Suppliers tab. '
+          'Cash, M-Pesa, customer credit and day close.',
       defaultUnit: 'kg',
       suggestedUnits: ['kg', 'bunch', 'heap', 'piece', 'bag', 'dozen'],
       interfaceLevel: InterfaceLevel.simple,
@@ -278,50 +275,49 @@ class BusinessProfile {
     BusinessProfile(
       id: BusinessProfileId.restaurant,
       label: 'Restaurant / food',
-      description:
-          'Menu items, modifiers, kitchen flow — coming in stages. '
-          'Operational stock and sales available now.',
+      description: 'Menu, kitchen flow and modifiers — coming later on phone.',
       defaultUnit: 'portion',
       interfaceLevel: InterfaceLevel.operational,
       features: ProfileFeatures.operational,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.pharmacy,
       label: 'Pharmacy / health retail',
-      description:
-          'Batch and expiry tracking, controlled adjustments, detailed audit.',
+      description: 'Batch and expiry tracking — staged after core profiles.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.controlled,
       features: ProfileFeatures.controlled,
       defaultTrackBatches: true,
       defaultHasExpiry: true,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.hardware,
       label: 'Hardware / building supplies',
-      description:
-          'Units, bulk quantities, quotations (later), credit limits, margins.',
+      description: 'Bulk units and quotations — coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.operationalPlus,
       features: ProfileFeatures.advanced,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.clothing,
       label: 'Boutique / clothing',
-      description:
-          'Sizes and colours (variants later), SKU/barcode, discounts, history.',
+      description: 'Sizes and colours (variants) — coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.operational,
       features: ProfileFeatures.advanced,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.electronics,
       label: 'Electronics / phone shop',
-      description:
-          'Serial/IMEI and warranties later; full inventory and margins now.',
+      description: 'Serial/IMEI and warranties — coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.advanced,
       features: ProfileFeatures.advanced,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.wholesale,
@@ -329,17 +325,18 @@ class BusinessProfile {
       description:
           'Bulk pricing, customer tiers, credit limits, purchase orders (later).',
       defaultUnit: 'carton',
+      suggestedUnits: ['carton', 'dozen', 'piece', 'bag'],
       interfaceLevel: InterfaceLevel.advanced,
       features: ProfileFeatures.advanced,
     ),
     BusinessProfile(
       id: BusinessProfileId.supermarket,
       label: 'Supermarket / large retail',
-      description:
-          'Multi-user, promotions, advanced purchasing — staged rollout.',
+      description: 'Multi-user and promotions — PC / later stage.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.advanced,
       features: ProfileFeatures.full,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.multiBranch,
