@@ -19,19 +19,15 @@ class AppDatabase {
   bool _useMemory = false;
   String _profileId = 'duka';
 
-  static const int schemaVersion = 5;
+  static const int schemaVersion = 6;
 
   String get activeProfileId => _profileId;
 
-  /// Bumps whenever the active business DB file changes.
-  /// UI shells should key off this so pages reload (no stale State).
   int _generation = 0;
   int get generation => _generation;
 
-  /// Once useProfile runs, do not let [database] re-read meta and clobber id.
   bool _profileLocked = false;
 
-  /// Switch business data file. Closes the previous profile DB and opens the new one.
   Future<void> useProfile(String profileId) async {
     final id = profileId.trim().isEmpty ? 'duka' : profileId.trim();
     if (_profileId == id && _database != null && _profileLocked) {
@@ -46,7 +42,6 @@ class AppDatabase {
     _profileId = id;
     _profileLocked = true;
     _generation++;
-    // Eager open so the next service call cannot race onto the old file.
     _database = await _openProfileDatabase(_profileId);
   }
 
@@ -87,7 +82,6 @@ class AppDatabase {
   Future<Database> get database async {
     if (_database != null) return _database!;
 
-    // Cold start only: pick profile from meta. After useProfile, id is locked.
     if (!_profileLocked) {
       try {
         final meta = await metaDatabase;
@@ -120,10 +114,8 @@ class AppDatabase {
     }
 
     final databasesPath = await getDatabasesPath();
-    // One file per profile: mercate_mamaMboga.db, mercate_duka.db, …
-    // Never reuse a shared business DB — that caused cross-profile leaks.
     final safeId = profileId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-    final profilePath = join(databasesPath, 'mercate_$safeId.db');
+    final profilePath = join(databasesPath, 'mercate_\$safeId.db');
 
     return openDatabase(
       profilePath,
@@ -134,39 +126,53 @@ class AppDatabase {
   }
 
   Future<void> _createDatabase(Database db, int version) async {
-    // Schema created from production template (v5).
-    await db.execute('''CREATE TABLE businesses (
+    await db.execute('''
+      CREATE TABLE businesses (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         business_type TEXT NOT NULL,
         currency TEXT NOT NULL DEFAULT 'KES',
         opening_balance REAL NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE categories (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE categories (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE products (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE products (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        alternative_name TEXT,
         sku TEXT,
         barcode TEXT,
         category_id TEXT,
+        brand TEXT,
         unit TEXT NOT NULL DEFAULT 'piece',
-        cost_price REAL NOT NULL DEFAULT 0,
         selling_price REAL NOT NULL DEFAULT 0,
+        cost_price REAL,
         wholesale_price REAL,
-        reorder_level REAL NOT NULL DEFAULT 0,
+        minimum_stock REAL NOT NULL DEFAULT 0,
+        reorder_quantity REAL NOT NULL DEFAULT 0,
+        supplier_id TEXT,
+        image_path TEXT,
+        notes TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
         track_batches INTEGER NOT NULL DEFAULT 0,
         has_expiry INTEGER NOT NULL DEFAULT 0,
-        is_active INTEGER NOT NULL DEFAULT 1,
-        supplier_id TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE stock_movements (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE stock_movements (
         id TEXT PRIMARY KEY,
         product_id TEXT NOT NULL,
         movement_type TEXT NOT NULL,
@@ -175,58 +181,70 @@ class AppDatabase {
         reference_id TEXT,
         reason TEXT,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE customers (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE customers (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         phone TEXT,
+        email TEXT,
+        location TEXT,
+        credit_limit REAL,
         notes TEXT,
-        credit_limit REAL NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE suppliers (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        phone TEXT,
-        notes TEXT,
-        supplies TEXT,
-        created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE sales (
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE sales (
         id TEXT PRIMARY KEY,
         customer_id TEXT,
         subtotal REAL NOT NULL,
         discount REAL NOT NULL DEFAULT 0,
         total REAL NOT NULL,
-        payment_type TEXT NOT NULL,
-        amount_tendered REAL,
-        change_given REAL NOT NULL DEFAULT 0,
-        reference TEXT,
-        notes TEXT,
-        status TEXT NOT NULL DEFAULT 'completed',
+        paid_amount REAL NOT NULL DEFAULT 0,
+        balance REAL NOT NULL DEFAULT 0,
+        payment_status TEXT NOT NULL,
+        sale_status TEXT NOT NULL DEFAULT 'completed',
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE sale_items (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE sale_items (
         id TEXT PRIMARY KEY,
         sale_id TEXT NOT NULL,
         product_id TEXT,
         product_name TEXT NOT NULL,
         quantity REAL NOT NULL,
         unit_price REAL NOT NULL,
+        unit_cost REAL,
         discount REAL NOT NULL DEFAULT 0,
         total REAL NOT NULL,
-        cost_price REAL NOT NULL DEFAULT 0,
         refunded_quantity REAL NOT NULL DEFAULT 0
-      )''');
-    await db.execute('''CREATE TABLE sale_payments (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE payments (
         id TEXT PRIMARY KEY,
-        sale_id TEXT NOT NULL,
+        sale_id TEXT,
+        customer_id TEXT,
+        supplier_id TEXT,
         payment_type TEXT NOT NULL,
         amount REAL NOT NULL,
         reference TEXT,
+        notes TEXT,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE debtor_transactions (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE debtor_transactions (
         id TEXT PRIMARY KEY,
         customer_id TEXT NOT NULL,
         sale_id TEXT,
@@ -235,8 +253,29 @@ class AppDatabase {
         reference TEXT,
         notes TEXT,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE purchases (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE suppliers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        location TEXT,
+        categories TEXT,
+        payment_terms TEXT,
+        credit_limit REAL,
+        notes TEXT,
+        supplies TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE purchases (
         id TEXT PRIMARY KEY,
         supplier_id TEXT NOT NULL,
         reference TEXT,
@@ -244,44 +283,50 @@ class AppDatabase {
         paid_amount REAL NOT NULL DEFAULT 0,
         balance REAL NOT NULL DEFAULT 0,
         status TEXT NOT NULL,
+        expected_payment_date TEXT,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE purchase_items (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE purchase_items (
         id TEXT PRIMARY KEY,
         purchase_id TEXT NOT NULL,
         product_id TEXT NOT NULL,
         quantity REAL NOT NULL,
         unit_cost REAL NOT NULL,
-        total REAL NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE creditor_transactions (
+        total REAL NOT NULL,
+        batch_id TEXT,
+        expiry_date TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE creditor_transactions (
         id TEXT PRIMARY KEY,
         supplier_id TEXT NOT NULL,
         purchase_id TEXT,
         transaction_type TEXT NOT NULL,
         amount REAL NOT NULL,
         reference TEXT,
-        created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE payments (
-        id TEXT PRIMARY KEY,
-        customer_id TEXT,
-        supplier_id TEXT,
-        payment_type TEXT NOT NULL,
-        amount REAL NOT NULL,
-        reference TEXT,
         notes TEXT,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE expenses (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE expenses (
         id TEXT PRIMARY KEY,
         category TEXT NOT NULL,
-        amount REAL NOT NULL,
         description TEXT,
-        payment_method TEXT NOT NULL DEFAULT 'cash',
+        amount REAL NOT NULL,
+        payment_method TEXT,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE day_closings (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE day_closings (
         id TEXT PRIMARY KEY,
         business_date TEXT NOT NULL UNIQUE,
         opening_cash REAL NOT NULL DEFAULT 0,
@@ -293,8 +338,11 @@ class AppDatabase {
         expenses_total REAL NOT NULL DEFAULT 0,
         notes TEXT,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('''CREATE TABLE notifications (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE notifications (
         id TEXT PRIMARY KEY,
         category TEXT NOT NULL,
         priority TEXT NOT NULL DEFAULT 'info',
@@ -307,8 +355,11 @@ class AppDatabase {
         is_read INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         read_at TEXT
-      )''');
-    await db.execute('''CREATE TABLE audit_logs (
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE audit_logs (
         id TEXT PRIMARY KEY,
         action TEXT NOT NULL,
         entity_type TEXT,
@@ -317,14 +368,26 @@ class AppDatabase {
         new_value TEXT,
         reason TEXT,
         created_at TEXT NOT NULL
-      )''');
-    await db.execute('CREATE INDEX idx_stock_product ON stock_movements(product_id)');
+      )
+    ''');
+
+    await db.execute(
+      'CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)',
+    );
     await db.execute('CREATE INDEX idx_sales_created ON sales(created_at)');
     await db.execute('CREATE INDEX idx_sale_items_sale ON sale_items(sale_id)');
-    await db.execute('CREATE INDEX idx_debtor_customer ON debtor_transactions(customer_id)');
-    await db.execute('CREATE INDEX idx_creditor_supplier ON creditor_transactions(supplier_id)');
-    await db.execute('CREATE INDEX idx_notifications_read ON notifications(is_read)');
-    await db.execute('CREATE INDEX idx_payments_reference ON payments(reference)');
+    await db.execute(
+      'CREATE INDEX idx_debtor_customer ON debtor_transactions(customer_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_creditor_supplier ON creditor_transactions(supplier_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_notifications_read ON notifications(is_read)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_payments_reference ON payments(reference)',
+    );
   }
 
   Future<void> _upgradeDatabase(
@@ -390,6 +453,20 @@ class AppDatabase {
       try {
         await db.execute('ALTER TABLE suppliers ADD COLUMN supplies TEXT');
       } catch (_) {}
+    }
+    if (oldVersion < 6) {
+      for (final sql in [
+        "ALTER TABLE sales ADD COLUMN paid_amount REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE sales ADD COLUMN balance REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE sales ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'unpaid'",
+        "ALTER TABLE sales ADD COLUMN sale_status TEXT NOT NULL DEFAULT 'completed'",
+        "ALTER TABLE sale_items ADD COLUMN unit_cost REAL",
+        "ALTER TABLE payments ADD COLUMN sale_id TEXT",
+      ]) {
+        try {
+          await db.execute(sql);
+        } catch (_) {}
+      }
     }
   }
 
