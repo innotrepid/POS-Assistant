@@ -156,8 +156,10 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Each type keeps its own stock, sales and customers. '
-                      'Mama mboga has no Suppliers tab; duka and others do.',
+                      'Each profile has its own separate database. '
+                      'Stock, sales, customers and suppliers on Mama mboga '
+                      'do not appear on Duka (and the reverse). '
+                      'Tabs also change: e.g. Mama mboga has no Suppliers tab.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 8),
@@ -167,8 +169,8 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
                         subtitle: Text(
                           p.enabled
                               ? (p.features.suppliers
-                                  ? 'Includes suppliers'
-                                  : 'No suppliers tab')
+                                  ? 'Includes suppliers · ${p.defaultUnit}'
+                                  : 'No suppliers tab · ${p.defaultUnit}')
                               : 'Coming later',
                         ),
                         enabled: p.enabled,
