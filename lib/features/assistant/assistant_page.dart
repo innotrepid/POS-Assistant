@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/assistant_service.dart';
+import '../../services/collection_service.dart';
 
 class _ChatMessage {
   final String text;
@@ -26,6 +27,7 @@ class AssistantPage extends StatefulWidget {
 
 class _AssistantPageState extends State<AssistantPage> {
   final _assistant = AssistantService();
+  final _collection = CollectionService();
   final _controller = TextEditingController();
   final _scroll = ScrollController();
   final List<_ChatMessage> _messages = [
@@ -103,11 +105,119 @@ class _AssistantPageState extends State<AssistantPage> {
     });
   }
 
+  DateTime _nextWeekday(int weekday) {
+    var d = DateTime.now();
+    do {
+      d = d.add(const Duration(days: 1));
+    } while (d.weekday != weekday);
+    return d;
+  }
+
+  String _labelResult(String code) {
+    return switch (code) {
+      'no_answer' => 'No answer',
+      'spoke' => 'Spoke',
+      'busy' => 'Busy',
+      'wrong_number' => 'Wrong number',
+      'promised_tomorrow' => 'Promised tomorrow',
+      'promised_friday' => 'Promised Friday',
+      'will_pay_later' => 'Will pay later',
+      'paid_partial' => 'Paid partial',
+      _ => code,
+    };
+  }
+
+  Future<void> _promptContactResult({
+    required String channel,
+    required String? customerId,
+    required String customerName,
+  }) async {
+    if (customerId == null || !mounted) return;
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'How did it go with $customerName?',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final e in [
+                      ('no_answer', 'No answer'),
+                      ('spoke', 'Spoke'),
+                      ('busy', 'Busy'),
+                      ('wrong_number', 'Wrong number'),
+                      ('promised_tomorrow', 'Promised tomorrow'),
+                      ('promised_friday', 'Promised Friday'),
+                      ('will_pay_later', 'Will pay later'),
+                      ('paid_partial', 'Paid partial'),
+                      ('skip', 'Skip log'),
+                    ])
+                      ActionChip(
+                        label: Text(e.$2),
+                        onPressed: () => Navigator.pop(context, e.$1),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (result == null || result == 'skip' || !mounted) return;
+
+    await _collection.logCommunication(
+      partyType: 'customer',
+      partyId: customerId,
+      partyName: customerName,
+      channel: channel,
+      result: result,
+    );
+
+    if (result == 'promised_tomorrow' || result == 'promised_friday') {
+      final when = result == 'promised_tomorrow'
+          ? DateTime.now().add(const Duration(days: 1))
+          : _nextWeekday(DateTime.friday);
+      await _collection.recordPromise(
+        customerId: customerId,
+        promisedDate: when,
+        notes: 'From Assistant $channel',
+      );
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _messages.add(
+        _ChatMessage(
+          text: 'Logged ${_labelResult(result)} for $customerName.',
+          fromUser: false,
+        ),
+      );
+    });
+    _scrollToEnd();
+  }
+
   Future<void> _runAction(AssistantAction action) async {
     if (action.kind == AssistantActionKind.cancelWrite) {
       setState(() {
         _messages.add(
-          const _ChatMessage(text: 'Cancelled — nothing was saved.', fromUser: false),
+          const _ChatMessage(
+            text: 'Cancelled — nothing was saved.',
+            fromUser: false,
+          ),
         );
       });
       _scrollToEnd();
@@ -170,14 +280,11 @@ class _AssistantPageState extends State<AssistantPage> {
       );
       if (ok != true || !mounted) return;
       await launchUrl(Uri(scheme: 'tel', path: phone));
-      if (action.customerId != null) {
-        await _assistant.logCallOrSmsResult(
-          customerId: action.customerId!,
-          customerName: action.customerName ?? phone,
-          channel: 'call',
-          result: 'dialer_opened',
-        );
-      }
+      await _promptContactResult(
+        channel: 'call',
+        customerId: action.customerId,
+        customerName: action.customerName ?? phone,
+      );
       return;
     }
 
@@ -212,14 +319,11 @@ class _AssistantPageState extends State<AssistantPage> {
         queryParameters: body.isEmpty ? null : {'body': body},
       ),
     );
-    if (action.customerId != null) {
-      await _assistant.logCallOrSmsResult(
-        customerId: action.customerId!,
-        customerName: action.customerName ?? phone,
-        channel: 'sms',
-        result: 'composer_opened',
-      );
-    }
+    await _promptContactResult(
+      channel: 'sms',
+      customerId: action.customerId,
+      customerName: action.customerName ?? phone,
+    );
   }
 
   @override
@@ -291,7 +395,8 @@ class _AssistantPageState extends State<AssistantPage> {
                             children: [
                               for (final a in m.actions)
                                 FilledButton.tonalIcon(
-                                  onPressed: _busy ? null : () => _runAction(a),
+                                  onPressed:
+                                      _busy ? null : () => _runAction(a),
                                   icon: Icon(
                                     a.kind == AssistantActionKind.call
                                         ? Icons.call
