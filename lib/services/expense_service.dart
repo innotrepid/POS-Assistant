@@ -9,6 +9,7 @@ const List<String> kExpenseCategories = [
   'utilities',
   'salaries',
   'supplies',
+  'stock purchase',
   'food',
   'misc',
 ];
@@ -62,6 +63,46 @@ class ExpenseService {
     });
 
     return id;
+  }
+
+  Future<void> voidExpense({
+    required String expenseId,
+    required String reason,
+  }) async {
+    if (expenseId.trim().isEmpty) {
+      throw ArgumentError('Expense id is required.');
+    }
+    final why = reason.trim();
+    if (why.isEmpty) {
+      throw ArgumentError('A reason is required to void an expense.');
+    }
+
+    final db = await _database.database;
+    final rows = await db.query(
+      'expenses',
+      where: 'id = ?',
+      whereArgs: [expenseId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Expense not found.');
+    }
+
+    final row = rows.first;
+    final now = DateTime.now().toIso8601String();
+    await db.transaction((txn) async {
+      await txn.delete('expenses', where: 'id = ?', whereArgs: [expenseId]);
+      await txn.insert('audit_logs', {
+        'id': _uuid.v4(),
+        'action': 'expense_voided',
+        'entity_type': 'expense',
+        'entity_id': expenseId,
+        'old_value':
+            'category=${row['category']}, amount=${row['amount']}',
+        'reason': why,
+        'created_at': now,
+      });
+    });
   }
 
   Future<List<Map<String, dynamic>>> listExpenses({

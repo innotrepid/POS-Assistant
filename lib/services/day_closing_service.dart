@@ -37,6 +37,14 @@ class DaySummary {
   }
 
   double get expectedMpesa => salesMpesa;
+
+  double cashVariance(double openingCash, double countedCash) {
+    return Money.round(countedCash - expectedCashFromOps(openingCash));
+  }
+
+  double mpesaVariance(double countedMpesa) {
+    return Money.round(countedMpesa - expectedMpesa);
+  }
 }
 
 class DayClosingService {
@@ -94,7 +102,7 @@ class DayClosingService {
       }
     }
 
-    final expenseRows = await db.rawQuery(
+    final expRows = await db.rawQuery(
       '''
       SELECT COALESCE(SUM(amount), 0) AS total,
              COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN amount ELSE 0 END), 0) AS cash_total
@@ -104,7 +112,12 @@ class DayClosingService {
       [range.startIso, range.endIso],
     );
 
-    final closingRows = await db.query(
+    final expensesTotal =
+        Money.round((expRows.first['total'] as num?)?.toDouble() ?? 0);
+    final expensesCash =
+        Money.round((expRows.first['cash_total'] as num?)?.toDouble() ?? 0);
+
+    final closings = await db.query(
       'day_closings',
       where: 'business_date = ?',
       whereArgs: [range.businessDate],
@@ -120,15 +133,11 @@ class DayClosingService {
       salesMpesa: Money.round(mpesa),
       salesCard: Money.round(card),
       salesOther: Money.round(other),
-      expensesTotal: Money.round(
-        (expenseRows.first['total'] as num?)?.toDouble() ?? 0,
-      ),
-      expensesCash: Money.round(
-        (expenseRows.first['cash_total'] as num?)?.toDouble() ?? 0,
-      ),
-      saleCount: (salesRows.first['sale_count'] as int?) ?? 0,
-      isClosed: closingRows.isNotEmpty,
-      closing: closingRows.isEmpty ? null : closingRows.first,
+      expensesTotal: expensesTotal,
+      expensesCash: expensesCash,
+      saleCount: (salesRows.first['sale_count'] as num?)?.toInt() ?? 0,
+      isClosed: closings.isNotEmpty,
+      closing: closings.isEmpty ? null : closings.first,
     );
   }
 
@@ -179,7 +188,7 @@ class DayClosingService {
       'entity_id': id,
       'new_value':
           'date=${summary.businessDate}, counted_cash=$countedC, '
-          'expected_cash=$expectedCash',
+          'expected_cash=$expectedCash, cash_var=${countedC - expectedCash}',
       'created_at': now,
     });
 
