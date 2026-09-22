@@ -19,7 +19,7 @@ class AppDatabase {
   bool _useMemory = false;
   String _profileId = 'duka';
 
-  static const int schemaVersion = 6;
+  static const int schemaVersion = 7;
 
   String get activeProfileId => _profileId;
 
@@ -371,6 +371,8 @@ class AppDatabase {
       )
     ''');
 
+    await _createCollectionTables(db);
+
     await db.execute(
       'CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)',
     );
@@ -387,6 +389,44 @@ class AppDatabase {
     );
     await db.execute(
       'CREATE INDEX idx_payments_reference ON payments(reference)',
+    );
+  }
+
+  Future<void> _createCollectionTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS promises_to_pay (
+        id TEXT PRIMARY KEY,
+        customer_id TEXT NOT NULL,
+        promised_date TEXT NOT NULL,
+        amount REAL,
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS communication_log (
+        id TEXT PRIMARY KEY,
+        party_type TEXT NOT NULL,
+        party_id TEXT,
+        party_name TEXT,
+        channel TEXT NOT NULL,
+        direction TEXT NOT NULL DEFAULT 'outbound',
+        result TEXT,
+        notes TEXT,
+        related_promise_id TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_promises_customer ON promises_to_pay(customer_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_promises_date ON promises_to_pay(promised_date)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_comm_party ON communication_log(party_id)',
     );
   }
 
@@ -467,6 +507,9 @@ class AppDatabase {
           await db.execute(sql);
         } catch (_) {}
       }
+    }
+    if (oldVersion < 7) {
+      await _createCollectionTables(db);
     }
   }
 
