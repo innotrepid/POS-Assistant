@@ -69,6 +69,9 @@ jobs:
             grep -q "POST_NOTIFICATIONS" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
           fi
 
+      - name: Package visibility for dialer/SMS
+        run: python3 scripts/patch_manifest_queries.py
+
       - name: Install Pillow
         run: python3 -m pip install pillow --break-system-packages --quiet
 
