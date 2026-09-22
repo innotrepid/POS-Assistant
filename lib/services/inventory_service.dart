@@ -127,7 +127,6 @@ class InventoryService {
       where: 'id = ?',
       whereArgs: [product.id],
     );
-
     await _writeAudit(
       action: 'product_updated',
       entityType: 'product',
@@ -136,27 +135,23 @@ class InventoryService {
     );
   }
 
-  Future<void> softDeleteProduct(String productId) async {
+  Future<void> deactivateProduct(String id) async {
     final db = await _database.database;
     await db.update(
       'products',
-      {
-        'active': 0,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
+      {'active': 0, 'updated_at': DateTime.now().toIso8601String()},
       where: 'id = ?',
-      whereArgs: [productId],
+      whereArgs: [id],
     );
-
     await _writeAudit(
       action: 'product_deactivated',
       entityType: 'product',
-      entityId: productId,
+      entityId: id,
     );
   }
 
   // ============================================================
-  // STOCK (always calculated live)
+  // STOCK
   // ============================================================
 
   Future<double> getStock(String productId) async {
@@ -172,18 +167,20 @@ class InventoryService {
     return (result.first['stock'] as num?)?.toDouble() ?? 0;
   }
 
-  Future<List<Map<String, dynamic>>> getMovements(String productId) async {
+  Future<List<Map<String, dynamic>>> getStockMovements(
+    String productId, {
+    int limit = 50,
+  }) async {
     final db = await _database.database;
     return db.query(
       'stock_movements',
       where: 'product_id = ?',
       whereArgs: [productId],
       orderBy: 'created_at DESC',
+      limit: limit,
     );
   }
 
-  /// Opening stock or goods received.
-  /// Also updates Weighted Average Cost when unitCost is provided.
   Future<void> addStock({
     required String productId,
     required double quantity,
@@ -199,7 +196,6 @@ class InventoryService {
     final db = await _database.database;
 
     await db.transaction((txn) async {
-      // Update weighted average cost first (if cost is given)
       if (unitCost != null && unitCost >= 0) {
         await _updateWeightedAverageCost(
           txn: txn,
@@ -230,7 +226,6 @@ class InventoryService {
     );
   }
 
-  /// Remove stock (sale, damage, expiry, adjustment, etc.)
   Future<void> removeStock({
     required String productId,
     required double quantity,
@@ -272,14 +267,22 @@ class InventoryService {
     );
   }
 
-  /// Manual adjustment (stock count correction)
+  /// Manual adjustment (stock count correction). Reason is required for audit.
   Future<void> adjustStock({
     required String productId,
     required double newQuantity,
     required String reason,
   }) async {
+    final why = reason.trim();
+    if (why.isEmpty) {
+      throw ArgumentError('A reason is required for stock adjustments.');
+    }
+    if (newQuantity < 0) {
+      throw ArgumentError('Counted quantity cannot be negative.');
+    }
+
     final current = await getStock(productId);
-    final difference = newQuantity - current;
+    final difference = Money.round(newQuantity - current);
 
     if (difference == 0) return;
 
@@ -288,21 +291,64 @@ class InventoryService {
         productId: productId,
         quantity: difference,
         movementType: 'adjustment',
-        reason: reason,
+        reason: why,
       );
     } else {
       await removeStock(
         productId: productId,
         quantity: -difference,
         movementType: 'adjustment',
-        reason: reason,
+        reason: why,
       );
     }
+
+    await _writeAudit(
+      action: 'stock_adjusted',
+      entityType: 'product',
+      entityId: productId,
+      newValue: 'from=$current to=$newQuantity (diff=$difference)',
+      reason: why,
+    );
   }
 
-  // ============================================================
-  // WEIGHTED AVERAGE COST
-  // ============================================================
+  /// Apply a stocktake: set each product to its counted quantity.
+  /// Returns how many products changed.
+  Future<int> applyStocktake({
+    required Map<String, double> countedByProductId,
+    required String reason,
+  }) async {
+    final why = reason.trim().isEmpty
+        ? 'Stocktake ${DateTime.now().toIso8601String().substring(0, 10)}'
+        : reason.trim();
+
+    var changed = 0;
+    for (final entry in countedByProductId.entries) {
+      final productId = entry.key;
+      final counted = Money.round(entry.value);
+      if (counted < 0) {
+        throw ArgumentError('Counted quantity cannot be negative.');
+      }
+      final current = await getStock(productId);
+      if (Money.round(current - counted) == 0) continue;
+      await adjustStock(
+        productId: productId,
+        newQuantity: counted,
+        reason: why,
+      );
+      changed++;
+    }
+
+    if (changed > 0) {
+      await _writeAudit(
+        action: 'stocktake_completed',
+        entityType: 'stocktake',
+        entityId: _uuid.v4(),
+        newValue: 'products_changed=$changed',
+        reason: why,
+      );
+    }
+    return changed;
+  }
 
   Future<void> _updateWeightedAverageCost({
     required dynamic txn,
@@ -310,7 +356,6 @@ class InventoryService {
     required double incomingQuantity,
     required double purchaseUnitCost,
   }) async {
-    // Current stock
     final stockResult = await txn.rawQuery(
       '''
       SELECT COALESCE(SUM(quantity), 0) AS stock
@@ -322,7 +367,6 @@ class InventoryService {
     final currentStock =
         (stockResult.first['stock'] as num?)?.toDouble() ?? 0;
 
-    // Current average cost
     final productResult = await txn.query(
       'products',
       columns: ['cost_price'],
@@ -356,10 +400,6 @@ class InventoryService {
       whereArgs: [productId],
     );
   }
-
-  // ============================================================
-  // HELPERS
-  // ============================================================
 
   Future<List<Product>> getLowStockProducts() async {
     final products = await getAllProducts(activeOnly: true);
