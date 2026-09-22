@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/assistant_service.dart';
 
 class _ChatMessage {
   final String text;
   final bool fromUser;
+  final List<AssistantAction> actions;
 
-  const _ChatMessage({required this.text, required this.fromUser});
+  const _ChatMessage({
+    required this.text,
+    required this.fromUser,
+    this.actions = const [],
+  });
 }
 
 class AssistantPage extends StatefulWidget {
@@ -25,9 +31,9 @@ class _AssistantPageState extends State<AssistantPage> {
   final List<_ChatMessage> _messages = [
     const _ChatMessage(
       text:
-          'Hi — I am the Mercate offline assistant.\n'
-          'Ask about today’s sales, who owes you, low stock, '
-          'business profiles, or how each part works.',
+          'Hi — I am your Mercate business partner (offline).\n'
+          'Ask how you did today, who is overdue, best sellers, '
+          'or what is not moving. I can offer Call / SMS — you always confirm.',
       fromUser: false,
     ),
   ];
@@ -61,10 +67,16 @@ class _AssistantPageState extends State<AssistantPage> {
     _scrollToEnd();
 
     try {
-      final answer = await _assistant.ask(q);
+      final reply = await _assistant.ask(q);
       if (!mounted) return;
       setState(() {
-        _messages.add(_ChatMessage(text: answer, fromUser: false));
+        _messages.add(
+          _ChatMessage(
+            text: reply.text,
+            fromUser: false,
+            actions: reply.actions,
+          ),
+        );
         _busy = false;
       });
     } catch (e) {
@@ -90,6 +102,88 @@ class _AssistantPageState extends State<AssistantPage> {
     });
   }
 
+  Future<void> _runAction(AssistantAction action) async {
+    final phone = action.phone?.trim();
+    if (phone == null || phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No phone number on this contact')),
+      );
+      return;
+    }
+
+    if (action.kind == AssistantActionKind.call) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Open phone dialer?'),
+          content: Text(
+            'Mercate will open the dialer for ${action.customerName ?? phone}.\n'
+            'Number: $phone\n\n'
+            'The call is not placed until you press Call in the dialer.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Open dialer'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+      final uri = Uri(scheme: 'tel', path: phone);
+      if (!await launchUrl(uri)) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open dialer')),
+        );
+      }
+      return;
+    }
+
+    // SMS — show body, then open composer
+    final body = action.smsBody ?? '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Open SMS?'),
+        content: SingleChildScrollView(
+          child: Text(
+            'To: ${action.customerName ?? phone}\n'
+            'Number: $phone\n\n'
+            'Message:\n$body\n\n'
+            'Nothing is sent until you press Send in Messages.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Open Messages'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final uri = Uri(
+      scheme: 'sms',
+      path: phone,
+      queryParameters: body.isEmpty ? null : {'body': body},
+    );
+    if (!await launchUrl(uri)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open Messages')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,9 +191,9 @@ class _AssistantPageState extends State<AssistantPage> {
         title: const Text('Mercate Assistant'),
         actions: [
           IconButton(
-            tooltip: 'How Mercate works',
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => _send('How does Mercate work?'),
+            tooltip: 'Daily brief',
+            icon: const Icon(Icons.today_outlined),
+            onPressed: () => _send('How did I do today?'),
           ),
         ],
       ),
@@ -141,13 +235,38 @@ class _AssistantPageState extends State<AssistantPage> {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     padding: const EdgeInsets.all(12),
                     constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.85,
+                      maxWidth: MediaQuery.of(context).size.width * 0.9,
                     ),
                     decoration: BoxDecoration(
                       color: color,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: SelectableText(m.text),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SelectableText(m.text),
+                        if (m.actions.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final a in m.actions)
+                                FilledButton.tonalIcon(
+                                  onPressed: () => _runAction(a),
+                                  icon: Icon(
+                                    a.kind == AssistantActionKind.call
+                                        ? Icons.call
+                                        : Icons.sms_outlined,
+                                    size: 18,
+                                  ),
+                                  label: Text(a.label),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 );
               },
@@ -163,7 +282,7 @@ class _AssistantPageState extends State<AssistantPage> {
                     child: TextField(
                       controller: _controller,
                       decoration: const InputDecoration(
-                        hintText: 'Ask about sales, stock, profiles…',
+                        hintText: 'Ask about sales, debt, stock…',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
