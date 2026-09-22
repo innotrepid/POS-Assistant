@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
-import '../../core/models/supplier.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
-import '../../services/expense_service.dart';
 import '../../services/inventory_service.dart';
-import '../../services/purchase_service.dart';
-import '../../services/supplier_service.dart';
-import 'stock_ops.dart';
+import '../suppliers/receive_purchase_page.dart';
 
-// File too large for single tool payload - user must paste from artifacts
-// TEMPORARY minimal page so app compiles; replace with full file.
 class InventoryPage extends StatefulWidget {
   final int unreadCount;
   final VoidCallback? onOpenNotifications;
-  const InventoryPage({super.key, this.unreadCount = 0, this.onOpenNotifications});
+
+  const InventoryPage({
+    super.key,
+    this.unreadCount = 0,
+    this.onOpenNotifications,
+  });
+
   @override
   State<InventoryPage> createState() => _InventoryPageState();
 }
@@ -24,9 +24,11 @@ class InventoryPage extends StatefulWidget {
 class _InventoryPageState extends State<InventoryPage> {
   final _inventory = InventoryService();
   final _profiles = BusinessProfileService.instance;
+
   List<Product> _products = [];
   Map<String, double> _stock = {};
   bool _loading = true;
+  bool _suppliersEnabled = false;
   String? _error;
 
   @override
@@ -36,19 +38,40 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
+      final profile = await _profiles.getProfile();
       final products = await _inventory.getAllProducts();
       final stock = <String, double>{};
       for (final p in products) {
         stock[p.id] = await _inventory.getStock(p.id);
       }
       if (!mounted) return;
-      setState(() { _products = products; _stock = stock; _loading = false; });
+      setState(() {
+        _suppliersEnabled = profile.features.suppliers;
+        _products = products;
+        _stock = stock;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
+  }
+
+  Future<void> _openReceiveGoods() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ReceivePurchasePage(),
+      ),
+    );
+    _load();
   }
 
   Future<void> _showAddProduct() async {
@@ -65,60 +88,92 @@ class _InventoryPageState extends State<InventoryPage> {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: const Text('Add product'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name'), autofocus: true),
-                const SizedBox(height: 12),
-                TextField(controller: priceCtrl, decoration: const InputDecoration(labelText: 'Selling price'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
-                const SizedBox(height: 12),
-                TextField(controller: costCtrl, decoration: const InputDecoration(labelText: 'Cost (optional)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
-                const SizedBox(height: 12),
-                Text('Unit', style: Theme.of(context).textTheme.labelLarge),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: const Text('Add product'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final u in units)
-                      ChoiceChip(
-                        label: Text(u),
-                        selected: selectedUnit == u,
-                        onSelected: (_) => setLocal(() => selectedUnit = u),
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Name'),
+                      autofocus: true,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: priceCtrl,
+                      decoration:
+                          const InputDecoration(labelText: 'Selling price'),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: costCtrl,
+                      decoration:
+                          const InputDecoration(labelText: 'Cost (optional)'),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text('Unit', style: Theme.of(context).textTheme.labelLarge),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final u in units)
+                          ChoiceChip(
+                            label: Text(u),
+                            selected: selectedUnit == u,
+                            onSelected: (_) =>
+                                setLocal(() => selectedUnit = u),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: qtyCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Opening quantity (optional)',
+                        helperText: 'e.g. 30 $selectedUnit',
+                        border: const OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: qtyCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Opening quantity (optional)',
-                    helperText: 'e.g. 30 $selectedUnit',
-                    border: const OutlineInputBorder(),
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
     if (ok != true || !mounted) return;
     try {
       final product = await _inventory.createProduct(
         name: nameCtrl.text.trim(),
         sellingPrice: Money.parse(priceCtrl.text),
-        costPrice: costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
+        costPrice:
+            costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
         unit: selectedUnit,
       );
       final opening = Money.parse(qtyCtrl.text);
@@ -126,7 +181,9 @@ class _InventoryPageState extends State<InventoryPage> {
         await _inventory.addStock(
           productId: product.id,
           quantity: opening,
-          unitCost: costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
+          unitCost: costCtrl.text.trim().isEmpty
+              ? null
+              : Money.parse(costCtrl.text),
           movementType: 'opening_stock',
           reason: 'Opening stock on product create',
         );
@@ -134,7 +191,9 @@ class _InventoryPageState extends State<InventoryPage> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
 
@@ -152,21 +211,33 @@ class _InventoryPageState extends State<InventoryPage> {
           children: [
             TextField(
               controller: qtyController,
-              decoration: InputDecoration(labelText: 'Quantity (${product.unit})'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Quantity (${product.unit})',
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               autofocus: true,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: costController,
-              decoration: const InputDecoration(labelText: 'Unit cost (optional)'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Unit cost (optional)',
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Add'),
+          ),
         ],
       ),
     );
@@ -175,14 +246,49 @@ class _InventoryPageState extends State<InventoryPage> {
       await _inventory.addStock(
         productId: product.id,
         quantity: Money.parse(qtyController.text),
-        unitCost: costController.text.trim().isEmpty ? null : Money.parse(costController.text),
+        unitCost: costController.text.trim().isEmpty
+            ? null
+            : Money.parse(costController.text),
         movementType: 'purchase_received',
         reason: 'Manual stock in',
       );
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
+
+  Future<void> _addStockFlow(Product product) async {
+    if (!_suppliersEnabled) {
+      await _manualAddStock(product);
+      return;
+    }
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Add stock · ${product.name}'),
+        content: const Text('How did the stock arrive?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'manual'),
+            child: const Text('Manual'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'supplier'),
+            child: const Text('From supplier'),
+          ),
+        ],
+      ),
+    );
+    if (choice == 'supplier') {
+      await _openReceiveGoods();
+      return;
+    }
+    if (choice == 'manual') {
+      await _manualAddStock(product);
     }
   }
 
@@ -194,6 +300,12 @@ class _InventoryPageState extends State<InventoryPage> {
         backgroundColor: Colors.transparent,
         title: const Text('Stock'),
         actions: [
+          if (_suppliersEnabled)
+            IconButton(
+              tooltip: 'Receive goods',
+              icon: const Icon(Icons.local_shipping_outlined),
+              onPressed: _openReceiveGoods,
+            ),
           if (widget.onOpenNotifications != null)
             IconButton(
               onPressed: widget.onOpenNotifications,
@@ -213,27 +325,40 @@ class _InventoryPageState extends State<InventoryPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!))
+              ? Center(
+                  child: GlassPanel(
+                    margin: const EdgeInsets.all(24),
+                    child: Text(_error!),
+                  ),
+                )
               : _products.isEmpty
-                  ? const Center(child: Text('No products yet. Tap + to add.'))
+                  ? const Center(
+                      child: Text('No products yet. Tap + to add.'),
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 88),
                       itemCount: _products.length,
                       itemBuilder: (context, index) {
                         final p = _products[index];
                         final qty = _stock[p.id] ?? 0;
+                        final low =
+                            p.minimumStock > 0 && qty <= p.minimumStock;
                         return GlassPanel(
                           margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
-                            title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            title: Text(
+                              p.name,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
                             subtitle: Text(
-                              '${Money.format(p.sellingPrice)} · $qty ${p.unit}'
-                              '${p.minimumStock > 0 && qty <= p.minimumStock ? ' · LOW' : ''}',
+                              '${Money.format(p.sellingPrice)} · '
+                              '$qty ${p.unit}'
+                              '${low ? ' · LOW' : ''}',
                             ),
                             trailing: IconButton(
                               icon: const Icon(Icons.add_box_outlined),
                               tooltip: 'Add stock',
-                              onPressed: () => _manualAddStock(p),
+                              onPressed: () => _addStockFlow(p),
                             ),
                           ),
                         );

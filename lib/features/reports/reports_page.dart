@@ -3,6 +3,7 @@ import 'package:printing/printing.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
+import '../../services/business_profile_service.dart';
 import '../../services/pdf_report_builder.dart';
 import '../../services/report_service.dart';
 
@@ -16,11 +17,13 @@ class ReportsPage extends StatefulWidget {
 class _ReportsPageState extends State<ReportsPage> {
   final _reports = ReportService();
   final _pdf = PdfReportBuilder();
+  final _profiles = BusinessProfileService.instance;
 
   DaySalesReport? _day;
   List<StockRow> _stock = [];
   List<PartyBalanceRow> _debtors = [];
   List<PartyBalanceRow> _creditors = [];
+  String _shopName = 'My shop';
   bool _loading = true;
   bool _exporting = false;
   String? _error;
@@ -41,12 +44,14 @@ class _ReportsPageState extends State<ReportsPage> {
       final stock = await _reports.stockOnHand();
       final debtors = await _reports.debtorsOutstanding();
       final creditors = await _reports.creditorsOutstanding();
+      final shop = await _profiles.getBusinessName();
       if (!mounted) return;
       setState(() {
         _day = day;
         _stock = stock;
         _debtors = debtors;
         _creditors = creditors;
+        _shopName = shop;
         _loading = false;
       });
     } catch (e) {
@@ -65,6 +70,7 @@ class _ReportsPageState extends State<ReportsPage> {
     setState(() => _exporting = true);
     try {
       final bytes = await _pdf.buildBusinessReport(
+        shopName: _shopName,
         day: day,
         stock: _stock,
         debtors: _debtors,
@@ -92,6 +98,7 @@ class _ReportsPageState extends State<ReportsPage> {
     setState(() => _exporting = true);
     try {
       final bytes = await _pdf.buildBusinessReport(
+        shopName: _shopName,
         day: day,
         stock: _stock,
         debtors: _debtors,
@@ -180,7 +187,6 @@ class _ReportsPageState extends State<ReportsPage> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
         if (_exporting) const LinearProgressIndicator(),
-
         GlassPanel(
           accent: true,
           borderRadius: 24,
@@ -220,7 +226,6 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ),
         const SizedBox(height: 12),
-
         Row(
           children: [
             Expanded(
@@ -261,7 +266,6 @@ class _ReportsPageState extends State<ReportsPage> {
           ],
         ),
         const SizedBox(height: 16),
-
         GlassPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,7 +291,6 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ),
         const SizedBox(height: 12),
-
         GlassPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -324,7 +327,6 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ),
         const SizedBox(height: 12),
-
         GlassPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
