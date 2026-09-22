@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
+import '../../core/models/supplier.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
+import '../../services/expense_service.dart';
 import '../../services/inventory_service.dart';
+import '../../services/purchase_service.dart';
 import '../../services/supplier_service.dart';
-import '../../core/models/supplier.dart';
 
 class InventoryPage extends StatefulWidget {
   final int unreadCount;
@@ -26,6 +28,8 @@ class _InventoryPageState extends State<InventoryPage> {
   final _inventory = InventoryService();
   final _profiles = BusinessProfileService.instance;
   final _suppliers = SupplierService();
+  final _purchases = PurchaseService();
+  final _expenses = ExpenseService();
   List<Product> _products = [];
   Map<String, double> _stock = {};
   bool _loading = true;
@@ -43,7 +47,7 @@ class _InventoryPageState extends State<InventoryPage> {
       _error = null;
     });
     try {
-      final products = await _inventory.getAllProducts(activeOnly: false);
+      final products = await _inventory.getAllProducts();
       final stock = <String, double>{};
       for (final p in products) {
         stock[p.id] = await _inventory.getStock(p.id);
@@ -65,16 +69,13 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Future<void> _showAddProduct() async {
     final profile = await _profiles.getProfile();
-    final nameController = TextEditingController();
-    final priceController = TextEditingController();
-    final costController = TextEditingController();
-    final stockController = TextEditingController(text: '0');
-    final minController = TextEditingController(text: '0');
-    var selectedUnit = profile.defaultUnit;
-    final unitController = TextEditingController(text: profile.defaultUnit);
+    final nameCtrl = TextEditingController();
+    final priceCtrl = TextEditingController();
+    final costCtrl = TextEditingController();
+    final unitCtrl = TextEditingController(text: profile.defaultUnit);
     final units = profile.suggestedUnits;
 
-    final saved = await showDialog<bool>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
@@ -84,59 +85,25 @@ class _InventoryPageState extends State<InventoryPage> {
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(labelText: 'Name'),
-                      autofocus: true,
-                    ),
+                    TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name'), autofocus: true),
                     const SizedBox(height: 12),
-                    Text('Unit', style: Theme.of(context).textTheme.labelLarge),
-                    const SizedBox(height: 6),
+                    TextField(controller: priceCtrl, decoration: const InputDecoration(labelText: 'Selling price'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                    const SizedBox(height: 12),
+                    TextField(controller: costCtrl, decoration: const InputDecoration(labelText: 'Cost (optional)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                    const SizedBox(height: 12),
                     Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                      spacing: 8,
                       children: [
                         for (final u in units)
                           ChoiceChip(
                             label: Text(u),
-                            selected: selectedUnit == u,
-                            onSelected: (_) {
-                              setLocal(() {
-                                selectedUnit = u;
-                                unitController.text = u;
-                              });
-                            },
+                            selected: unitCtrl.text == u,
+                            onSelected: (_) => setLocal(() => unitCtrl.text = u),
                           ),
                       ],
                     ),
-                    TextField(
-                      controller: unitController,
-                      decoration: const InputDecoration(labelText: 'Or type unit'),
-                      onChanged: (v) => setLocal(() => selectedUnit = v),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: priceController,
-                      decoration: const InputDecoration(labelText: 'Selling price'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    TextField(
-                      controller: costController,
-                      decoration: const InputDecoration(labelText: 'Cost (optional)'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    TextField(
-                      controller: stockController,
-                      decoration: const InputDecoration(labelText: 'Opening stock'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    TextField(
-                      controller: minController,
-                      decoration: const InputDecoration(labelText: 'Minimum stock'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    ),
+                    TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: 'Unit')),
                   ],
                 ),
               ),
@@ -149,26 +116,14 @@ class _InventoryPageState extends State<InventoryPage> {
         );
       },
     );
-
-    if (saved != true) return;
+    if (ok != true || !mounted) return;
     try {
-      final product = await _inventory.createProduct(
-        name: nameController.text,
-        unit: unitController.text.trim().isEmpty ? selectedUnit : unitController.text.trim(),
-        sellingPrice: Money.parse(priceController.text),
-        costPrice: costController.text.trim().isEmpty ? null : Money.parse(costController.text),
-        minimumStock: Money.parse(minController.text),
+      await _inventory.createProduct(
+        name: nameCtrl.text.trim(),
+        sellingPrice: Money.parse(priceCtrl.text),
+        costPrice: costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
+        unit: unitCtrl.text.trim().isEmpty ? profile.defaultUnit : unitCtrl.text.trim(),
       );
-      final opening = Money.parse(stockController.text);
-      if (opening > 0) {
-        await _inventory.addStock(
-          productId: product.id,
-          quantity: opening,
-          unitCost: costController.text.trim().isEmpty ? null : Money.parse(costController.text),
-          movementType: 'opening_stock',
-          reason: 'Opening stock',
-        );
-      }
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -176,28 +131,18 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
-  Future<void> _addStock(Product product) async {
+  Future<void> _addStockFlow(Product product) async {
     final profile = await _profiles.getProfile();
     if (profile.features.suppliers) {
-      final choice = await showModalBottomSheet<String>(
+      final choice = await showDialog<String>(
         context: context,
-        builder: (context) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.edit_outlined),
-                title: const Text('Manual quantity'),
-                onTap: () => Navigator.pop(context, 'manual'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.local_shipping_outlined),
-                title: const Text('From a supplier'),
-                subtitle: const Text('Pick what they brought'),
-                onTap: () => Navigator.pop(context, 'supplier'),
-              ),
-            ],
-          ),
+        builder: (context) => AlertDialog(
+          title: Text('Add stock · ${product.name}'),
+          content: const Text('How did the stock arrive?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, 'manual'), child: const Text('Manual')),
+            FilledButton(onPressed: () => Navigator.pop(context, 'supplier'), child: const Text('From supplier')),
+          ],
         ),
       );
       if (choice == 'supplier') {
@@ -214,37 +159,33 @@ class _InventoryPageState extends State<InventoryPage> {
     final costController = TextEditingController(
       text: product.costPrice != null ? product.costPrice!.toString() : '',
     );
-
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Add stock · ${product.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: qtyController,
-                decoration: InputDecoration(labelText: 'Quantity (${product.unit})'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                autofocus: true,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: costController,
-                decoration: const InputDecoration(labelText: 'Unit cost (optional)'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
+      builder: (context) => AlertDialog(
+        title: Text('Add stock · ${product.name}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: qtyController,
+              decoration: InputDecoration(labelText: 'Quantity (${product.unit})'),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: costController,
+              decoration: const InputDecoration(labelText: 'Unit cost (optional)'),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
           ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
+        ],
+      ),
     );
-
     if (ok != true) return;
     try {
       final qty = Money.parse(qtyController.text);
@@ -283,9 +224,7 @@ class _InventoryPageState extends State<InventoryPage> {
             for (final s in suppliers)
               ListTile(
                 title: Text(s.name),
-                subtitle: s.supplies.isEmpty
-                    ? const Text('No product list yet')
-                    : Text(s.supplies.join(', ')),
+                subtitle: s.supplies.isEmpty ? const Text('No product list yet') : Text(s.supplies.join(', ')),
                 onTap: () => Navigator.pop(context, s),
               ),
           ],
@@ -355,35 +294,31 @@ class _InventoryPageState extends State<InventoryPage> {
                 child: ListView(
                   shrinkWrap: true,
                   children: [
-                    Text(
-                      'Tick items and enter quantities. Stock becomes old + new.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                    Text('Tick items, enter qty and supplier unit cost.', style: Theme.of(context).textTheme.bodySmall),
                     const SizedBox(height: 8),
                     for (final l in lines)
                       CheckboxListTile(
                         value: selected[l.name] ?? false,
                         onChanged: (v) => setLocal(() => selected[l.name] = v ?? false),
                         title: Text(l.name),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (l.product == null)
-                              const Text('New product will be created', style: TextStyle(fontSize: 11)),
-                            if (selected[l.name] == true) ...[
-                              TextField(
-                                controller: qtyCtrls[l.name],
-                                decoration: const InputDecoration(labelText: 'Quantity', isDense: true),
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                              TextField(
-                                controller: costCtrls[l.name],
-                                decoration: const InputDecoration(labelText: 'Unit cost (optional)', isDense: true),
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ],
-                          ],
-                        ),
+                        subtitle: selected[l.name] == true
+                            ? Column(
+                                children: [
+                                  TextField(
+                                    controller: qtyCtrls[l.name],
+                                    decoration: const InputDecoration(labelText: 'Quantity', isDense: true),
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  ),
+                                  TextField(
+                                    controller: costCtrls[l.name],
+                                    decoration: const InputDecoration(labelText: 'Supplier unit cost', isDense: true),
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  ),
+                                ],
+                              )
+                            : (l.product == null
+                                ? const Text('New product will be created', style: TextStyle(fontSize: 11))
+                                : null),
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
                   ],
@@ -391,50 +326,164 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add stock')),
+                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Next')),
               ],
             );
           },
         );
       },
     );
-
     if (ok != true || !mounted) return;
 
-    var added = 0;
     try {
+      final purchaseLines = <PurchaseLineInput>[];
       for (final l in lines) {
         if (selected[l.name] != true) continue;
         final qty = Money.parse(qtyCtrls[l.name]!.text);
         if (qty <= 0) continue;
         final costText = costCtrls[l.name]!.text.trim();
-        final unitCost = costText.isEmpty ? null : Money.parse(costText);
+        final unitCost = costText.isEmpty ? 0.0 : Money.parse(costText);
 
         var product = l.product;
         if (product == null) {
           product = await _inventory.createProduct(
             name: l.name,
-            sellingPrice: unitCost != null && unitCost > 0 ? unitCost * 1.25 : 0,
-            costPrice: unitCost,
+            sellingPrice: unitCost > 0 ? unitCost * 1.25 : 0,
+            costPrice: unitCost > 0 ? unitCost : null,
             unit: 'piece',
             supplierId: supplier.id,
           );
         }
 
-        await _inventory.addStock(
+        purchaseLines.add(PurchaseLineInput(
           productId: product.id,
+          productName: product.name,
           quantity: qty,
           unitCost: unitCost,
-          movementType: 'purchase_received',
-          reason: 'Received from ${supplier.name}',
-          referenceId: supplier.id,
-        );
-        added++;
+        ));
       }
+
+      if (purchaseLines.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter quantity for at least one item')),
+        );
+        return;
+      }
+
+      final total = purchaseLines.fold<double>(0, (s, l) => s + l.total);
+      final paidCtrl = TextEditingController(text: total.toStringAsFixed(0));
+      var payMethod = 'cash';
+      var payMode = 'paid';
+
+      final payOk = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setLocal) {
+              return AlertDialog(
+                title: const Text('How did you pay the supplier?'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Goods total ${Money.format(total)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Paid now'),
+                          selected: payMode == 'paid',
+                          onSelected: (_) => setLocal(() {
+                            payMode = 'paid';
+                            paidCtrl.text = total.toStringAsFixed(0);
+                          }),
+                        ),
+                        ChoiceChip(
+                          label: const Text('Credit (owe)'),
+                          selected: payMode == 'credit',
+                          onSelected: (_) => setLocal(() {
+                            payMode = 'credit';
+                            paidCtrl.text = '0';
+                          }),
+                        ),
+                        ChoiceChip(
+                          label: const Text('Partial'),
+                          selected: payMode == 'partial',
+                          onSelected: (_) => setLocal(() => payMode = 'partial'),
+                        ),
+                      ],
+                    ),
+                    if (payMode != 'credit') ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: paidCtrl,
+                        decoration: const InputDecoration(labelText: 'Amount paid now', border: OutlineInputBorder()),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final m in ['cash', 'mpesa'])
+                            ChoiceChip(
+                              label: Text(m.toUpperCase()),
+                              selected: payMethod == m,
+                              onSelected: (_) => setLocal(() => payMethod = m),
+                            ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Text(
+                      payMode == 'credit'
+                          ? 'Full amount becomes money you owe this supplier.'
+                          : 'Paid amount is logged as a stock-purchase expense.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                  FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Confirm')),
+                ],
+              );
+            },
+          );
+        },
+      );
+      if (payOk != true || !mounted) return;
+
+      final paid = payMode == 'credit' ? 0.0 : Money.parse(paidCtrl.text);
+      await _purchases.createPurchase(
+        supplierId: supplier.id,
+        items: purchaseLines,
+        paidAmount: paid,
+        paymentType: payMethod,
+      );
+
+      if (paid > 0) {
+        try {
+          await _expenses.recordExpense(
+            category: 'Stock purchase',
+            amount: paid,
+            description: 'Paid ${supplier.name} for goods received',
+            paymentMethod: payMethod,
+          );
+        } catch (_) {}
+      }
+
       await _load();
       if (!mounted) return;
+      final bal = Money.round(total - paid);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Added stock for $added item${added == 1 ? '' : 's'}')),
+        SnackBar(
+          content: Text(
+            bal > 0
+                ? 'Stock updated · paid ${Money.format(paid)} · owe ${Money.format(bal)}'
+                : 'Stock updated · paid ${Money.format(paid)}',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -458,7 +507,10 @@ class _InventoryPageState extends State<InventoryPage> {
             children: [
               const ListTile(title: Text('Add stock to which product?')),
               for (final p in _products)
-                ListTile(title: Text(p.name), onTap: () => Navigator.pop(context, p)),
+                ListTile(
+                  title: Text(p.name),
+                  onTap: () => Navigator.pop(context, p),
+                ),
             ],
           ),
         ),
@@ -472,13 +524,13 @@ class _InventoryPageState extends State<InventoryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: Text('Stock', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
         actions: [
           if (widget.onOpenNotifications != null)
             IconButton(
-              tooltip: 'Notifications',
               onPressed: widget.onOpenNotifications,
               icon: Badge(
                 isLabelVisible: widget.unreadCount > 0,
@@ -489,17 +541,16 @@ class _InventoryPageState extends State<InventoryPage> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: RaisedFab(
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 72),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             FloatingActionButton.extended(
               heroTag: 'inventory_receive_fab',
               onPressed: _showReceiveEntry,
-              icon: const Icon(Icons.inventory_2_outlined),
-              label: const Text('Add stock'),
+              icon: const Icon(Icons.move_to_inbox),
+              label: const Text('Receive'),
             ),
             const SizedBox(height: 10),
             FloatingActionButton(
@@ -523,7 +574,7 @@ class _InventoryPageState extends State<InventoryPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_error!),
+              Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
               FilledButton(onPressed: _load, child: const Text('Retry')),
             ],
@@ -532,43 +583,25 @@ class _InventoryPageState extends State<InventoryPage> {
       );
     }
     if (_products.isEmpty) {
-      return Center(
-        child: GlassPanel(
-          margin: const EdgeInsets.all(24),
-          child: Text(
-            'No products yet. Tap + to add one.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ),
-      );
+      return const Center(child: Text('No products yet. Tap + to add one.'));
     }
-
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 120),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 160),
       itemCount: _products.length,
       itemBuilder: (context, index) {
         final product = _products[index];
         final qty = _stock[product.id] ?? 0;
-        final low = product.minimumStock > 0 && qty <= product.minimumStock;
-        final out = qty <= 0;
-        final scheme = Theme.of(context).colorScheme;
-
         return GlassPanel(
-          margin: const EdgeInsets.only(bottom: 10),
-          borderRadius: 18,
+          margin: const EdgeInsets.only(bottom: 8),
+          borderRadius: 16,
+          padding: EdgeInsets.zero,
           child: ListTile(
             title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(
-              '${Money.format(product.sellingPrice)} · stock ${qty} ${product.unit}'
-              '${out ? ' · OUT' : (low ? ' · LOW' : '')}',
-              style: TextStyle(color: out || low ? scheme.error : null),
-            ),
+            subtitle: Text('${Money.format(product.sellingPrice)} · stock $qty ${product.unit}'),
             trailing: IconButton(
-              onPressed: () => _addStock(product),
               icon: const Icon(Icons.add_box_outlined),
               tooltip: 'Add stock',
+              onPressed: () => _addStockFlow(product),
             ),
           ),
         );
