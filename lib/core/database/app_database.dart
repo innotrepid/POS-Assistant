@@ -115,7 +115,7 @@ class AppDatabase {
 
     final databasesPath = await getDatabasesPath();
     final safeId = profileId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-    final profilePath = join(databasesPath, 'mercate_\$safeId.db');
+    final profilePath = join(databasesPath, 'mercate_' + safeId + '.db');
 
     return openDatabase(
       profilePath,
