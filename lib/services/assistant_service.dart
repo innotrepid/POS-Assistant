@@ -83,7 +83,6 @@ class AssistantService {
       );
     }
 
-    // --- Guides ---
     if (_matches(q, [
       'how does', 'how do i', 'how this app', 'help', 'guide',
       'what can you', 'what can this', 'mercate work',
@@ -130,7 +129,6 @@ class AssistantService {
       return AssistantReply(_explainSecurity());
     }
 
-    // --- Intelligence ---
     if (_matches(q, [
       'how did i do', 'how am i doing', 'daily brief', 'summary today',
       'business today', 'today summary',
@@ -144,6 +142,7 @@ class AssistantService {
     }
     if (_matches(q, [
       'this week', 'week sales', 'sales this week', 'compared to yesterday',
+      'yesterday',
     ])) {
       return AssistantReply(await _weekVsToday());
     }
@@ -192,7 +191,6 @@ class AssistantService {
       return AssistantReply(await _cashPosition());
     }
 
-    // Call / message intent by name fragment
     if (_matches(q, ['call ', 'phone ', 'dial ']) ||
         q.startsWith('call') ||
         q.startsWith('message') ||
@@ -208,7 +206,6 @@ class AssistantService {
     );
   }
 
-  // Keep String API for any older callers
   Future<String> askText(String raw) async => (await ask(raw)).text;
 
   bool _matches(String q, List<String> keys) {
@@ -292,12 +289,12 @@ class AssistantService {
     final day = await _reports.daySales();
     final debtors = await _debtors.listOutstanding(limit: 50);
     final overdueDays = await _policy.getOverdueDebtDays();
-    final overdue = await _debtors.listOverdue(overdueDays: overdueDays, limit: 20);
+    final overdue =
+        await _debtors.listOverdue(overdueDays: overdueDays, limit: 20);
     final low = await _inventory.getLowStockProducts();
     final shop = await _profiles.getBusinessName();
 
-    final debtTotal =
-        debtors.fold<double>(0, (s, d) => s + d.balance);
+    final debtTotal = debtors.fold<double>(0, (s, d) => s + d.balance);
 
     return 'Daily brief — $shop (${day.businessDate})\n\n'
         'Sales: ${Money.format(day.salesTotal)} '
@@ -309,7 +306,7 @@ class AssistantService {
         '(${debtors.length} people)\n'
         'Overdue (≥$overdueDays days): ${overdue.length}\n'
         'Low-stock products: ${low.length}\n\n'
-        'Ask “Who is overdue?” or “Low stock” for details.';
+        'Ask "Who is overdue?" or "Low stock" for details.';
   }
 
   Future<String> _todaySales() async {
@@ -326,8 +323,9 @@ class AssistantService {
 
   Future<String> _weekVsToday() async {
     final today = await _reports.daySales();
-    final yesterday =
-        await _reports.daySales(DateTime.now().subtract(const Duration(days: 1)));
+    final yesterday = await _reports.daySales(
+      DateTime.now().subtract(const Duration(days: 1)),
+    );
     final delta = Money.round(today.salesTotal - yesterday.salesTotal);
     final dir = delta > 0
         ? 'up ${Money.format(delta)} vs yesterday'
@@ -335,7 +333,7 @@ class AssistantService {
             ? 'down ${Money.format(-delta)} vs yesterday'
             : 'same as yesterday';
     return 'Today ${Money.format(today.salesTotal)} ($dir)\n'
-        'Yesterday ${Money.format(yesterday.salesTotal)} '\n'
+        'Yesterday ${Money.format(yesterday.salesTotal)} '
         '(${yesterday.saleCount} sales)';
   }
 
@@ -436,8 +434,7 @@ class AssistantService {
     final actions = <AssistantAction>[];
     final shop = await _profiles.getBusinessName();
     for (final d in list.take(10)) {
-      final days =
-          d.daysOpen > 0 ? ' · ${d.daysOpen}d' : '';
+      final days = d.daysOpen > 0 ? ' · ${d.daysOpen}d' : '';
       buf.writeln('• ${d.customerName}: ${Money.format(d.balance)}$days');
       final phone = d.phone?.trim();
       if (phone != null && phone.isNotEmpty) {
@@ -465,7 +462,10 @@ class AssistantService {
       buf.writeln('… and more in Customers → Debtors');
     }
     buf.writeln('\nUse Call / SMS below when a phone number is saved.');
-    return AssistantReply(buf.toString().trim(), actions: actions.take(6).toList());
+    return AssistantReply(
+      buf.toString().trim(),
+      actions: actions.take(6).toList(),
+    );
   }
 
   Future<AssistantReply> _whoIsOverdue() async {
@@ -509,7 +509,10 @@ class AssistantService {
         ));
       }
     }
-    return AssistantReply(buf.toString().trim(), actions: actions.take(6).toList());
+    return AssistantReply(
+      buf.toString().trim(),
+      actions: actions.take(6).toList(),
+    );
   }
 
   Future<String> _whoIOwe() async {
@@ -568,7 +571,6 @@ class AssistantService {
         'No debtors with balances to call or message.',
       );
     }
-    // Try match by name token
     DebtorSummary? match;
     for (final d in list) {
       final name = d.customerName.toLowerCase();
@@ -596,9 +598,8 @@ class AssistantService {
       shopName: shop,
       daysOpen: match.daysOpen,
     );
-    final wantSms = q.contains('sms') ||
-        q.contains('message') ||
-        q.contains('text');
+    final wantSms =
+        q.contains('sms') || q.contains('message') || q.contains('text');
     return AssistantReply(
       '${match.customerName} owes ${Money.format(match.balance)}'
       '${match.daysOpen > 0 ? ' (${match.daysOpen} days)' : ''}.\n'
