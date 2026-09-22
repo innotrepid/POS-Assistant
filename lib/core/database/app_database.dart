@@ -19,7 +19,7 @@ class AppDatabase {
   bool _useMemory = false;
   String _profileId = 'duka';
 
-  static const int schemaVersion = 7;
+  static const int schemaVersion = 8;
 
   String get activeProfileId => _profileId;
 
@@ -191,6 +191,7 @@ class AppDatabase {
         phone TEXT,
         email TEXT,
         location TEXT,
+        customer_type TEXT,
         credit_limit REAL,
         notes TEXT,
         active INTEGER NOT NULL DEFAULT 1,
@@ -510,6 +511,11 @@ class AppDatabase {
     }
     if (oldVersion < 7) {
       await _createCollectionTables(db);
+    }
+    if (oldVersion < 8) {
+      try {
+        await db.execute('ALTER TABLE customers ADD COLUMN customer_type TEXT');
+      } catch (_) {}
     }
   }
 
