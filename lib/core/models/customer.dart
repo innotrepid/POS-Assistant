@@ -2,6 +2,7 @@ class Customer {
   final String id;
   final String name;
   final String? phone;
+  final String? email;
   final String? location;
   final String? customerType;
   final double? creditLimit;
@@ -14,6 +15,7 @@ class Customer {
     required this.id,
     required this.name,
     this.phone,
+    this.email,
     this.location,
     this.customerType,
     this.creditLimit,
@@ -28,6 +30,7 @@ class Customer {
       'id': id,
       'name': name,
       'phone': phone,
+      'email': email,
       'location': location,
       'customer_type': customerType,
       'credit_limit': creditLimit,
@@ -43,13 +46,16 @@ class Customer {
       id: map['id'] as String,
       name: map['name'] as String,
       phone: map['phone'] as String?,
+      email: map['email'] as String?,
       location: map['location'] as String?,
       customerType: map['customer_type'] as String?,
       creditLimit: (map['credit_limit'] as num?)?.toDouble(),
       notes: map['notes'] as String?,
       active: (map['active'] as int?) == 1,
       createdAt: DateTime.parse(map['created_at'] as String),
-      updatedAt: DateTime.parse(map['updated_at'] as String),
+      updatedAt: DateTime.parse(
+        (map['updated_at'] as String?) ?? map['created_at'] as String,
+      ),
     );
   }
 }

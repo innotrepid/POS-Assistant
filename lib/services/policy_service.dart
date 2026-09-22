@@ -2,7 +2,8 @@ import 'package:sqflite/sqflite.dart';
 
 import '../core/database/app_database.dart';
 
-/// Configurable business policies (safeguards).
+/// Configurable business policies (safeguards) — stored in the **profile** DB
+/// so each shop type can have its own rules.
 class PolicyService {
   PolicyService({AppDatabase? database})
       : _database = database ?? AppDatabase.instance;
@@ -14,6 +15,17 @@ class PolicyService {
   static const blockOverdueCredit = 'policy_block_overdue_credit';
   static const largeRefundAmount = 'policy_large_refund_amount';
   static const overdueDebtDays = 'policy_overdue_debt_days';
+
+  Future<Database> _db() async {
+    final db = await _database.database;
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      )
+    ''');
+    return db;
+  }
 
   Future<bool> getAllowNegativeStock() async {
     return (await _get(allowNegativeStock)) == '1';
@@ -61,19 +73,23 @@ class PolicyService {
   }
 
   Future<String?> _get(String key) async {
-    final db = await _database.database;
-    final rows = await db.query(
-      'settings',
-      where: 'key = ?',
-      whereArgs: [key],
-      limit: 1,
-    );
-    if (rows.isEmpty) return null;
-    return rows.first['value'] as String?;
+    try {
+      final db = await _db();
+      final rows = await db.query(
+        'settings',
+        where: 'key = ?',
+        whereArgs: [key],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      return rows.first['value'] as String?;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _set(String key, String value) async {
-    final db = await _database.database;
+    final db = await _db();
     await db.insert(
       'settings',
       {'key': key, 'value': value},
