@@ -15,10 +15,6 @@ class InventoryService {
   final AppDatabase _database;
   final Uuid _uuid;
 
-  // ============================================================
-  // PRODUCT CRUD
-  // ============================================================
-
   Future<Product> createProduct({
     required String name,
     String? alternativeName,
@@ -74,7 +70,6 @@ class InventoryService {
     final db = await _database.database;
     await db.transaction((txn) async {
       await txn.insert('products', product.toMap());
-      // Default selling unit = base unit (conversion 1).
       await txn.insert('product_units', {
         'id': '${product.id}_default',
         'product_id': product.id,
@@ -165,11 +160,6 @@ class InventoryService {
     );
   }
 
-  // ============================================================
-  // PRODUCT UNITS (multi-UoM)
-  // ============================================================
-
-  /// All selling units for a product, default first then sort_order.
   Future<List<ProductUnit>> getUnits(String productId) async {
     final db = await _database.database;
     final maps = await db.query(
@@ -214,8 +204,6 @@ class InventoryService {
     return null;
   }
 
-  /// Ensures at least one unit row exists (base unit, conversion 1).
-  /// Useful for products created before schema v9.
   Future<ProductUnit> ensureDefaultUnit(String productId) async {
     final existing = await getDefaultUnit(productId);
     if (existing != null) return existing;
@@ -287,9 +275,6 @@ class InventoryService {
       }
       await txn.insert('product_units', unit.toMap());
 
-      // Sync catalogue list price only. products.unit is the *base stock*
-      // unit and must not change when an alternate selling unit is defaulted
-      // (e.g. kg with conversion 10) or stock labels become wrong.
       if (isDefault) {
         await txn.update(
           'products',
@@ -377,7 +362,6 @@ class InventoryService {
     );
   }
 
-  /// Deletes a non-default unit. Cannot remove the last unit for a product.
   Future<void> deleteUnit(String unitId) async {
     final unit = await getUnit(unitId);
     if (unit == null) {
@@ -419,15 +403,12 @@ class InventoryService {
     await updateUnit(unit.copyWith(isDefault: true));
   }
 
-  /// Convert a quantity sold in [unit] to base stock quantity.
   double toBaseQuantity(ProductUnit unit, double soldQuantity) =>
       unit.toBaseQuantity(soldQuantity);
 
-  /// Convert base stock quantity to quantity in [unit].
   double fromBaseQuantity(ProductUnit unit, double baseQuantity) =>
       unit.fromBaseQuantity(baseQuantity);
 
-  /// Resolve unit by name for a product (case-insensitive).
   Future<ProductUnit?> findUnitByName(String productId, String unitName) async {
     final name = unitName.trim().toLowerCase();
     if (name.isEmpty) return null;
@@ -437,10 +418,6 @@ class InventoryService {
     }
     return null;
   }
-
-  // ============================================================
-  // STOCK
-  // ============================================================
 
   Future<double> getStock(String productId) async {
     final db = await _database.database;
@@ -555,7 +532,6 @@ class InventoryService {
     );
   }
 
-  /// Manual adjustment (stock count correction). Reason is required for audit.
   Future<void> adjustStock({
     required String productId,
     required double newQuantity,
@@ -599,8 +575,6 @@ class InventoryService {
     );
   }
 
-  /// Apply a stocktake: set each product to its counted quantity.
-  /// Returns how many products changed.
   Future<int> applyStocktake({
     required Map<String, double> countedByProductId,
     required String reason,
@@ -687,6 +661,18 @@ class InventoryService {
       where: 'id = ?',
       whereArgs: [productId],
     );
+  }
+
+  Future<List<Product>> getLowStockProducts() async {
+    final products = await getAllProducts(activeOnly: true);
+    final lowStock = <Product>[];
+    for (final product in products) {
+      final stock = await getStock(product.id);
+      if (product.minimumStock > 0 && stock <= product.minimumStock) {
+        lowStock.add(product);
+      }
+    }
+    return lowStock;
   }
 
   Future<void> _writeAudit({
