@@ -4,6 +4,7 @@ import '../../core/models/product.dart';
 import '../../core/models/product_unit.dart';
 import '../../core/utils/money.dart';
 import '../../services/inventory_service.dart';
+import '../../services/policy_service.dart';
 
 /// Result of picking a selling unit for a catalogue product.
 class UnitPickResult {
@@ -15,8 +16,8 @@ class UnitPickResult {
 
 /// Shows selling units for [product].
 ///
-/// - 0–1 units → returns the only/default unit without a sheet
-/// - 2+ units → bottom sheet so the cashier picks piece / kg / heap / etc.
+/// - 0–1 units (and policy off) → returns the only/default unit without a sheet
+/// - 2+ units, or policy requireUnitPick → bottom sheet for piece / kg / heap / etc.
 Future<UnitPickResult?> showUnitPicker(
   BuildContext context, {
   required Product product,
@@ -30,7 +31,6 @@ Future<UnitPickResult?> showUnitPicker(
   }
 
   if (units.isEmpty) {
-    // Fallback synthetic default (should be rare).
     final fallback = ProductUnit(
       id: '${product.id}_default',
       productId: product.id,
@@ -43,7 +43,8 @@ Future<UnitPickResult?> showUnitPicker(
     return UnitPickResult(product: product, unit: fallback);
   }
 
-  if (units.length == 1) {
+  final forcePick = await PolicyService().getRequireUnitPick();
+  if (units.length == 1 && !forcePick) {
     return UnitPickResult(product: product, unit: units.first);
   }
 
