@@ -19,7 +19,7 @@ class AppDatabase {
   bool _useMemory = false;
   String _profileId = 'duka';
 
-  static const int schemaVersion = 8;
+  static const int schemaVersion = 9;
 
   String get activeProfileId => _profileId;
 
@@ -168,6 +168,23 @@ class AppDatabase {
         has_expiry INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      )
+    ''');
+
+    // Multi-unit of measure: alternate selling units with conversion to base.
+    // Inventory is always tracked in products.unit (base unit).
+    await db.execute('''
+      CREATE TABLE product_units (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        unit_name TEXT NOT NULL,
+        conversion_to_base REAL NOT NULL,
+        selling_price REAL NOT NULL,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        barcode TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        UNIQUE(product_id, unit_name)
       )
     ''');
 
@@ -377,6 +394,9 @@ class AppDatabase {
     await db.execute(
       'CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)',
     );
+    await db.execute(
+      'CREATE INDEX idx_product_units_product ON product_units(product_id)',
+    );
     await db.execute('CREATE INDEX idx_sales_created ON sales(created_at)');
     await db.execute('CREATE INDEX idx_sale_items_sale ON sale_items(sale_id)');
     await db.execute(
@@ -517,6 +537,68 @@ class AppDatabase {
         await db.execute('ALTER TABLE customers ADD COLUMN customer_type TEXT');
       } catch (_) {}
     }
+    if (oldVersion < 9) {
+      await _migrateToV9ProductUnits(db);
+    }
+  }
+
+  /// Schema v9: create product_units and backfill one default unit row
+  /// per existing product (using current unit + selling_price).
+  Future<void> _migrateToV9ProductUnits(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS product_units (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        unit_name TEXT NOT NULL,
+        conversion_to_base REAL NOT NULL,
+        selling_price REAL NOT NULL,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        barcode TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        UNIQUE(product_id, unit_name)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_product_units_product ON product_units(product_id)',
+    );
+
+    final products = await db.query(
+      'products',
+      columns: ['id', 'unit', 'selling_price', 'barcode', 'created_at'],
+    );
+
+    final now = DateTime.now().toIso8601String();
+    final batch = db.batch();
+
+    for (final row in products) {
+      final productId = row['id'] as String;
+      final unitName = (row['unit'] as String?)?.trim().isNotEmpty == true
+          ? (row['unit'] as String).trim()
+          : 'piece';
+      final sellingPrice = (row['selling_price'] as num?)?.toDouble() ?? 0.0;
+      final barcode = row['barcode'] as String?;
+      // Deterministic id so re-running the migration is safe.
+      final unitId = '${productId}_default';
+
+      batch.insert(
+        'product_units',
+        {
+          'id': unitId,
+          'product_id': productId,
+          'unit_name': unitName,
+          'conversion_to_base': 1.0,
+          'selling_price': sellingPrice,
+          'is_default': 1,
+          'barcode': barcode,
+          'sort_order': 0,
+          'created_at': (row['created_at'] as String?) ?? now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+
+    await batch.commit(noResult: true);
   }
 
   Future<void> close() async {
