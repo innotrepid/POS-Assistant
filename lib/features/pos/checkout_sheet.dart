@@ -312,6 +312,8 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               unitCost: line.isQuickSale ? null : line.product?.costPrice,
               discount: line.discount,
               isQuickSale: line.isQuickSale,
+              unitName: line.unitName,
+              baseQuantity: line.isQuickSale ? null : line.baseQuantity,
             ),
           )
           .toList();
@@ -610,8 +612,16 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 : null,
           ),
         ),
-        if (remaining > 0.001) ...[
-          Text('Remaining ${Money.format(remaining)}'),
+        if (remaining > 0.001)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Remaining ${Money.format(remaining)} '
+              '(will go on credit if customer selected)',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        if (remaining > 0.001 || _customer != null) ...[
           const SizedBox(height: 8),
           _customerTile(),
         ],
@@ -633,7 +643,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   child: DropdownButtonFormField<String>(
                     value: leg.type,
                     decoration: const InputDecoration(
-                      labelText: 'Method',
+                      labelText: 'Type',
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
@@ -652,7 +662,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 if (_legs.length > 1)
                   IconButton(
                     onPressed: () => _removeLeg(index),
-                    icon: const Icon(Icons.delete_outline),
+                    icon: const Icon(Icons.close),
                   ),
               ],
             ),
@@ -662,22 +672,22 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               decoration: const InputDecoration(
                 labelText: 'Amount',
                 border: OutlineInputBorder(),
+                isDense: true,
               ),
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => setState(() {}),
             ),
-            if (leg.type == 'mpesa' ||
-                leg.type == 'bank' ||
-                leg.type == 'card') ...[
+            if (leg.type == 'mpesa' || leg.type == 'bank') ...[
               const SizedBox(height: 8),
               TextField(
                 controller: leg.refCtrl,
                 decoration: InputDecoration(
-                  labelText: leg.type == 'card'
-                      ? 'Reference (optional)'
-                      : 'Reference (required)',
+                  labelText: leg.type == 'mpesa'
+                      ? 'M-Pesa reference'
+                      : 'Bank reference',
                   border: const OutlineInputBorder(),
+                  isDense: true,
                 ),
               ),
             ],
@@ -690,8 +700,11 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   Widget _customerTile() {
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.person),
-      title: Text(_customer?.name ?? 'Select customer'),
+      title: Text(
+        _customer == null
+            ? 'Select customer'
+            : _customer!.name,
+      ),
       subtitle: _customer?.phone != null ? Text(_customer!.phone!) : null,
       trailing: const Icon(Icons.person_search),
       onTap: _pickCustomer,
