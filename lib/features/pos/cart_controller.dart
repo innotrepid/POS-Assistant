@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/models/product.dart';
+import '../../core/models/product_unit.dart';
 import '../../core/utils/money.dart';
 import 'cart_line.dart';
 
@@ -21,16 +22,30 @@ class CartController extends ChangeNotifier {
 
   bool get isEmpty => _lines.isEmpty;
 
-  void addProduct(Product product, {double quantity = 1}) {
-    final key = product.id;
-    final index = _lines.indexWhere((l) => !l.isQuickSale && l.lineKey == key);
+  /// Add catalogue product. Pass [unit] for multi-UoM; otherwise uses product defaults.
+  void addProduct(
+    Product product, {
+    double quantity = 1,
+    ProductUnit? unit,
+  }) {
+    final line = unit != null
+        ? CartLine.fromProductUnit(
+            product: product,
+            unit: unit,
+            quantity: quantity,
+          )
+        : CartLine.fromProduct(product, quantity: quantity);
+
+    final index = _lines.indexWhere(
+      (l) => !l.isQuickSale && l.lineKey == line.lineKey,
+    );
     if (index >= 0) {
       final existing = _lines[index];
       _lines[index] = existing.copyWith(
         quantity: existing.quantity + quantity,
       );
     } else {
-      _lines.add(CartLine.fromProduct(product, quantity: quantity));
+      _lines.add(line);
     }
     notifyListeners();
   }
