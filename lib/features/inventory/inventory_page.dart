@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
+import '../../core/models/product_unit.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
@@ -28,6 +29,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
   List<Product> _products = [];
   Map<String, double> _stock = {};
+  Map<String, List<ProductUnit>> _unitsByProduct = {};
   bool _loading = true;
   bool _suppliersEnabled = false;
   String? _error;
@@ -47,14 +49,21 @@ class _InventoryPageState extends State<InventoryPage> {
       final profile = await _profiles.getProfile();
       final products = await _inventory.getAllProducts();
       final stock = <String, double>{};
+      final unitsMap = <String, List<ProductUnit>>{};
       for (final p in products) {
         stock[p.id] = await _inventory.getStock(p.id);
+        try {
+          unitsMap[p.id] = await _inventory.getUnits(p.id);
+        } catch (_) {
+          unitsMap[p.id] = [];
+        }
       }
       if (!mounted) return;
       setState(() {
         _suppliersEnabled = profile.features.suppliers;
         _products = products;
         _stock = stock;
+        _unitsByProduct = unitsMap;
         _loading = false;
       });
     } catch (e) {
@@ -208,59 +217,108 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> _manualAddStock(Product product) async {
+    var units = await _inventory.getUnits(product.id);
+    if (units.isEmpty) {
+      await _inventory.ensureDefaultUnit(product.id);
+      units = await _inventory.getUnits(product.id);
+    }
+    ProductUnit? selected = units.isEmpty
+        ? null
+        : units.firstWhere((u) => u.isDefault, orElse: () => units.first);
+
     final qtyController = TextEditingController(text: '1');
     final costController = TextEditingController(
       text: product.costPrice != null ? product.costPrice!.toString() : '',
     );
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Add stock · ${product.name}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: qtyController,
-              decoration: InputDecoration(
-                labelText: 'Quantity (${product.unit})',
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: Text('Add stock · ${product.name}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (units.isNotEmpty)
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final u in units)
+                          ChoiceChip(
+                            label: Text(u.unitName),
+                            selected: selected?.id == u.id,
+                            onSelected: (_) => setLocal(() => selected = u),
+                          ),
+                      ],
+                    ),
+                  if (selected != null && selected!.conversionToBase != 1)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, bottom: 6),
+                      child: Text(
+                        '1 ${selected!.unitName} = ${_fmtQty(selected!.conversionToBase)} ${product.unit}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  TextField(
+                    controller: qtyController,
+                    decoration: InputDecoration(
+                      labelText: selected == null
+                          ? 'Quantity'
+                          : 'Quantity (${selected!.unitName})',
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: costController,
+                    decoration: InputDecoration(
+                      labelText: selected == null
+                          ? 'Unit cost (optional)'
+                          : 'Cost per ${selected!.unitName} (optional)',
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                ],
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              autofocus: true,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: costController,
-              decoration: const InputDecoration(
-                labelText: 'Unit cost (optional)',
-              ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Add'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
     if (ok != true) return;
     try {
+      final qty = Money.parse(qtyController.text);
+      final conv = selected?.conversionToBase ?? 1.0;
+      final baseQty = qty * conv;
+      double? unitCost;
+      if (costController.text.trim().isNotEmpty) {
+        final costPerReceived = Money.parse(costController.text);
+        unitCost =
+            conv == 0 ? costPerReceived : Money.round(costPerReceived / conv);
+      }
       await _inventory.addStock(
         productId: product.id,
-        quantity: Money.parse(qtyController.text),
-        unitCost: costController.text.trim().isEmpty
-            ? null
-            : Money.parse(costController.text),
+        quantity: baseQty,
+        unitCost: unitCost,
         movementType: 'purchase_received',
-        reason: 'Manual stock in',
+        reason: selected == null || conv == 1
+            ? 'Manual stock in'
+            : 'Manual stock in: $qty ${selected!.unitName}',
       );
       await _load();
     } catch (e) {
@@ -300,6 +358,28 @@ class _InventoryPageState extends State<InventoryPage> {
     if (choice == 'manual') {
       await _manualAddStock(product);
     }
+  }
+
+  String _stockSubtitle(Product p, double qty, bool low) {
+    final parts = <String>[
+      Money.format(p.sellingPrice),
+      '${_fmtQty(qty)} ${p.unit}',
+    ];
+    final units = _unitsByProduct[p.id] ?? const <ProductUnit>[];
+    for (final u in units) {
+      if (u.conversionToBase <= 1) continue;
+      final alt = qty / u.conversionToBase;
+      parts.add('≈ ${_fmtQty(alt)} ${u.unitName}');
+      break;
+    }
+    if (low) parts.add('LOW');
+    parts.add('tap for units');
+    return parts.join(' · ');
+  }
+
+  String _fmtQty(double v) {
+    if (v == v.truncateToDouble()) return v.toInt().toString();
+    return v.toStringAsFixed(2);
   }
 
   @override
@@ -360,12 +440,7 @@ class _InventoryPageState extends State<InventoryPage> {
                               p.name,
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
-                            subtitle: Text(
-                              '${Money.format(p.sellingPrice)} · '
-                              '$qty ${p.unit}'
-                              '${low ? ' · LOW' : ''}'
-                              ' · tap for units',
-                            ),
+                            subtitle: Text(_stockSubtitle(p, qty, low)),
                             onTap: () => _openProductUnits(p),
                             trailing: IconButton(
                               icon: const Icon(Icons.add_box_outlined),
