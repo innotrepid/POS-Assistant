@@ -143,7 +143,7 @@ class InventoryService {
       whereArgs: [product.id],
     );
     await _writeAudit(
-           action: 'product_updated',
+      action: 'product_updated',
       entityType: 'product',
       entityId: product.id,
       newValue: 'name=${updated.name}',
@@ -287,13 +287,14 @@ class InventoryService {
       }
       await txn.insert('product_units', unit.toMap());
 
-      // Keep products.selling_price in sync with the default unit.
+      // Sync catalogue list price only. products.unit is the *base stock*
+      // unit and must not change when an alternate selling unit is defaulted
+      // (e.g. kg with conversion 10) or stock labels become wrong.
       if (isDefault) {
         await txn.update(
           'products',
           {
             'selling_price': unit.sellingPrice,
-            'unit': unit.unitName,
             'updated_at': now.toIso8601String(),
           },
           where: 'id = ?',
@@ -359,7 +360,6 @@ class InventoryService {
           'products',
           {
             'selling_price': updated.sellingPrice,
-            'unit': updated.unitName,
             'updated_at': DateTime.now().toIso8601String(),
           },
           where: 'id = ?',
@@ -667,7 +667,7 @@ class InventoryService {
         ? 0.0
         : (productResult.first['cost_price'] as num?)?.toDouble() ?? 0.0;
 
-    double newAvg;
+    final double newAvg;
 
     if (currentStock <= 0) {
       newAvg = purchaseUnitCost;
@@ -689,35 +689,28 @@ class InventoryService {
     );
   }
 
-  Future<List<Product>> getLowStockProducts() async {
-    final products = await getAllProducts(activeOnly: true);
-    final lowStock = <Product>[];
-
-    for (final product in products) {
-      final stock = await getStock(product.id);
-      if (stock <= product.minimumStock) {
-        lowStock.add(product);
-      }
-    }
-    return lowStock;
-  }
-
   Future<void> _writeAudit({
     required String action,
     required String entityType,
-    required String entityId,
+    String? entityId,
+    String? oldValue,
     String? newValue,
     String? reason,
   }) async {
-    final db = await _database.database;
-    await db.insert('audit_logs', {
-      'id': _uuid.v4(),
-      'action': action,
-      'entity_type': entityType,
-      'entity_id': entityId,
-      'new_value': newValue,
-      'reason': reason,
-      'created_at': DateTime.now().toIso8601String(),
-    });
+    try {
+      final db = await _database.database;
+      await db.insert('audit_logs', {
+        'id': _uuid.v4(),
+        'action': action,
+        'entity_type': entityType,
+        'entity_id': entityId,
+        'old_value': oldValue,
+        'new_value': newValue,
+        'reason': reason,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (_) {
+      // Audit must never break the main path.
+    }
   }
 }
