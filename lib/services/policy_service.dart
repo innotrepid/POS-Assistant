@@ -15,6 +15,7 @@ class PolicyService {
   static const blockOverdueCredit = 'policy_block_overdue_credit';
   static const largeRefundAmount = 'policy_large_refund_amount';
   static const overdueDebtDays = 'policy_overdue_debt_days';
+  static const requireUnitPick = 'policy_require_unit_pick';
 
   Future<Database> _db() async {
     final db = await _database.database;
@@ -70,6 +71,15 @@ class PolicyService {
   Future<void> setOverdueDebtDays(int days) async {
     final d = days < 1 ? 1 : days;
     await _set(overdueDebtDays, d.toString());
+  }
+
+  /// When true, POS always shows the unit picker (even if only one unit).
+  Future<bool> getRequireUnitPick() async {
+    return (await _get(requireUnitPick)) == '1';
+  }
+
+  Future<void> setRequireUnitPick(bool value) async {
+    await _set(requireUnitPick, value ? '1' : '0');
   }
 
   Future<String?> _get(String key) async {
