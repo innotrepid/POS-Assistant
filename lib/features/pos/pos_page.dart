@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
+import '../../core/models/product_unit.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/inventory_service.dart';
@@ -37,6 +38,7 @@ class _PosPageState extends State<PosPage> {
 
   List<Product> _products = [];
   Map<String, double> _stockByProduct = {};
+  Map<String, List<ProductUnit>> _unitsByProduct = {};
   bool _loading = true;
   String? _error;
 
@@ -81,14 +83,21 @@ class _PosPageState extends State<PosPage> {
           : await _inventory.searchProducts(query.trim());
 
       final stockMap = <String, double>{};
+      final unitsMap = <String, List<ProductUnit>>{};
       for (final p in products) {
         stockMap[p.id] = await _inventory.getStock(p.id);
+        try {
+          unitsMap[p.id] = await _inventory.getUnits(p.id);
+        } catch (_) {
+          unitsMap[p.id] = [];
+        }
       }
 
       if (!mounted) return;
       setState(() {
         _products = products;
         _stockByProduct = stockMap;
+        _unitsByProduct = unitsMap;
         _loading = false;
       });
     } catch (e) {
@@ -290,20 +299,48 @@ class _PosPageState extends State<PosPage> {
         final product = _products[index];
         final stock = _stockByProduct[product.id] ?? 0;
         final out = stock <= 0;
+        final units = _unitsByProduct[product.id] ?? const <ProductUnit>[];
         return GlassPanel(
           margin: const EdgeInsets.only(bottom: 8),
           borderRadius: 16,
           padding: EdgeInsets.zero,
-          child: ListTile(
-            title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(
-              '${Money.format(product.sellingPrice)} · stock ${stock <= 0 ? 0 : stock} ${product.unit}',
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.add_shopping_cart),
-              onPressed: out ? null : () => _addProduct(product),
-            ),
-            onTap: out ? null : () => _addProduct(product),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ListTile(
+                title: Text(
+                  product.name,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  'stock ${stock <= 0 ? 0 : stock} ${product.unit}',
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.add_shopping_cart),
+                  onPressed: out ? null : () => _addProduct(product),
+                ),
+                onTap: out ? null : () => _addProduct(product),
+              ),
+              if (!out && units.length >= 2)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final u in units)
+                        ActionChip(
+                          label: Text(
+                            '${u.unitName} · ${Money.format(u.sellingPrice)}',
+                          ),
+                          onPressed: () {
+                            _cart.addProduct(product, unit: u);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+            ],
           ),
         );
       },
