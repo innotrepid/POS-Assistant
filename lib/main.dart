@@ -311,11 +311,14 @@ class _AppShellState extends State<AppShell> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: showAssistantFab
-          ? FloatingActionButton(
-              heroTag: 'assistant_fab',
-              onPressed: _openAssistant,
-              tooltip: 'Assistant',
-              child: const Icon(Icons.auto_awesome),
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 72),
+              child: FloatingActionButton(
+                heroTag: 'assistant_fab',
+                onPressed: _openAssistant,
+                tooltip: 'Assistant',
+                child: const Icon(Icons.auto_awesome),
+              ),
             )
           : null,
       bottomNavigationBar: visible.isEmpty
