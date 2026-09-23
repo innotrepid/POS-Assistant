@@ -6,6 +6,7 @@ import '../../core/utils/money.dart';
 import '../../services/inventory_service.dart';
 import '../../services/sales_service.dart';
 import 'cart_controller.dart';
+import 'unit_picker_sheet.dart';
 import 'checkout_sheet.dart';
 import 'receipt_page.dart';
 import 'sales_history_page.dart';
@@ -58,6 +59,17 @@ class _PosPageState extends State<PosPage> {
     if (mounted) setState(() {});
   }
 
+  /// Add product; if multiple selling units exist, ask which one.
+  Future<void> _addProduct(Product product) async {
+    final pick = await showUnitPicker(
+      context,
+      product: product,
+      inventory: _inventory,
+    );
+    if (pick == null || !mounted) return;
+    _cart.addProduct(pick.product, unit: pick.unit);
+  }
+
   Future<void> _loadProducts({String? query}) async {
     setState(() {
       _loading = true;
@@ -98,48 +110,58 @@ class _PosPageState extends State<PosPage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Quick sale'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Item name'),
-                  autofocus: true,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Item name',
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: priceCtrl,
-                  decoration: const InputDecoration(labelText: 'Price'),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                textCapitalization: TextCapitalization.sentences,
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: priceCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Price',
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: qtyCtrl,
-                  decoration: const InputDecoration(labelText: 'Quantity'),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: qtyCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Quantity',
+                  border: OutlineInputBorder(),
                 ),
-              ],
-            ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+            ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add to cart')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Add'),
+            ),
           ],
         );
       },
     );
 
-    if (ok != true || !mounted) return;
+    if (ok != true) return;
     final name = nameCtrl.text.trim();
     final price = Money.parse(priceCtrl.text);
-    final qty = Money.parse(qtyCtrl.text);
-    if (name.isEmpty || price <= 0 || qty <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid name, price, and quantity')),
-      );
-      return;
-    }
+    final qty = double.tryParse(qtyCtrl.text.trim()) ?? 1;
+    if (name.isEmpty || price < 0 || qty <= 0) return;
+
     _cart.addQuickSale(name: name, unitPrice: price, quantity: qty);
   }
 
@@ -149,6 +171,7 @@ class _PosPageState extends State<PosPage> {
     final result = await showModalBottomSheet<CheckoutResult>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       builder: (context) => CheckoutSheet(
         cart: _cart,
         salesService: _sales,
@@ -162,28 +185,9 @@ class _PosPageState extends State<PosPage> {
     widget.onSaleCompleted?.call();
 
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 96),
-        duration: const Duration(seconds: 8),
-        content: Text(
-          'Sale complete · ${Money.format(result.total)} · ${result.paymentType}'
-          '${result.changeGiven > 0 ? ' · change ${Money.format(result.changeGiven)}' : ''}',
-        ),
-        action: SnackBarAction(
-          label: 'Receipt',
-          onPressed: () {
-            messenger.hideCurrentSnackBar();
-            Navigator.of(context, rootNavigator: true).push(
-              MaterialPageRoute<void>(
-                builder: (_) => ReceiptPage(saleId: result.saleId),
-              ),
-            );
-          },
-        ),
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReceiptPage(saleId: result.saleId),
       ),
     );
   }
@@ -191,59 +195,51 @@ class _PosPageState extends State<PosPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: Text(
-          'POS',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-              ),
-        ),
+        title: const Text('POS'),
         actions: [
           if (widget.onOpenNotifications != null)
             IconButton(
-              tooltip: 'Notifications',
-              onPressed: widget.onOpenNotifications,
               icon: Badge(
                 isLabelVisible: widget.unreadCount > 0,
                 label: Text('${widget.unreadCount}'),
                 child: const Icon(Icons.notifications_outlined),
               ),
+              onPressed: widget.onOpenNotifications,
             ),
           IconButton(
-            tooltip: 'Quick sale',
-            onPressed: _quickSale,
-            icon: const Icon(Icons.bolt_outlined),
-          ),
-          IconButton(
-            tooltip: 'History',
+            icon: const Icon(Icons.history),
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const SalesHistoryPage()),
+                MaterialPageRoute(builder: (_) => const SalesHistoryPage()),
               );
             },
-            icon: const Icon(Icons.receipt_long_outlined),
           ),
+          IconButton(
+            icon: const Icon(Icons.flash_on),
+            tooltip: 'Quick sale',
+            onPressed: _quickSale,
+          ),
+          if (widget.onOpenAssistant != null)
+            IconButton(
+              icon: const Icon(Icons.smart_toy_outlined),
+              onPressed: widget.onOpenAssistant,
+            ),
         ],
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-            child: GlassPanel(
-              borderRadius: 16,
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: TextField(
-                controller: _searchController,
-                decoration: const InputDecoration(
-                  hintText: 'Search products',
-                  border: InputBorder.none,
-                  prefixIcon: Icon(Icons.search),
-                ),
-                onChanged: (q) => _loadProducts(query: q),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: 'Search products',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+                isDense: true,
               ),
+              onChanged: (q) => _loadProducts(query: q),
             ),
           ),
           Expanded(child: _buildProductList()),
@@ -254,11 +250,13 @@ class _PosPageState extends State<PosPage> {
   }
 
   Widget _buildProductList() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
     if (_error != null) {
       return Center(
-        child: GlassPanel(
-          margin: const EdgeInsets.all(24),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -275,8 +273,8 @@ class _PosPageState extends State<PosPage> {
     }
     if (_products.isEmpty) {
       return Center(
-        child: GlassPanel(
-          margin: const EdgeInsets.all(24),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
           child: Text(
             'No products. Add stock first, or use Quick sale.',
             style: Theme.of(context).textTheme.bodyMedium,
@@ -303,9 +301,9 @@ class _PosPageState extends State<PosPage> {
             ),
             trailing: IconButton(
               icon: const Icon(Icons.add_shopping_cart),
-              onPressed: out ? null : () => _cart.addProduct(product),
+              onPressed: out ? null : () => _addProduct(product),
             ),
-            onTap: out ? null : () => _cart.addProduct(product),
+            onTap: out ? null : () => _addProduct(product),
           ),
         );
       },
@@ -337,7 +335,9 @@ class _PosPageState extends State<PosPage> {
                         children: [
                           Expanded(
                             child: Text(
-                              line.name,
+                              line.displayUnit.isEmpty
+                                  ? line.name
+                                  : '${line.name} (${line.displayUnit})',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
