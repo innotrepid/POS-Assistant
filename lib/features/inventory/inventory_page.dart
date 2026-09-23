@@ -6,6 +6,7 @@ import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/inventory_service.dart';
 import '../suppliers/receive_purchase_page.dart';
+import 'product_units_page.dart';
 
 class InventoryPage extends StatefulWidget {
   final int unreadCount;
@@ -63,6 +64,15 @@ class _InventoryPageState extends State<InventoryPage> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _openProductUnits(Product product) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProductUnitsPage(product: product),
+      ),
+    );
+    _load();
   }
 
   Future<void> _openReceiveGoods() async {
@@ -353,8 +363,10 @@ class _InventoryPageState extends State<InventoryPage> {
                             subtitle: Text(
                               '${Money.format(p.sellingPrice)} · '
                               '$qty ${p.unit}'
-                              '${low ? ' · LOW' : ''}',
+                              '${low ? ' · LOW' : ''}'
+                              ' · tap for units',
                             ),
+                            onTap: () => _openProductUnits(p),
                             trailing: IconButton(
                               icon: const Icon(Icons.add_box_outlined),
                               tooltip: 'Add stock',
