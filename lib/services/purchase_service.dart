@@ -6,15 +6,35 @@ import '../core/utils/money.dart';
 class PurchaseLineInput {
   final String productId;
   final String productName;
+
+  /// Quantity **as received** (e.g. 2 bags, 5 kg).
   final double quantity;
+
+  /// Cost **per received unit** (e.g. KSh per bag).
   final double unitCost;
+
+  /// Received unit name (piece, kg, bag…). Optional display.
+  final String? unitName;
+
+  /// How many base units equal 1 received unit. Default 1.
+  final double conversionToBase;
 
   const PurchaseLineInput({
     required this.productId,
     required this.productName,
     required this.quantity,
     required this.unitCost,
+    this.unitName,
+    this.conversionToBase = 1,
   });
+
+  double get baseQuantity =>
+      quantity * (conversionToBase <= 0 ? 1 : conversionToBase);
+
+  double get baseUnitCost {
+    final conv = conversionToBase <= 0 ? 1.0 : conversionToBase;
+    return Money.round(unitCost / conv);
+  }
 
   double get total => Money.round(quantity * unitCost);
 }
@@ -24,8 +44,8 @@ class PurchaseService {
   PurchaseService({
     AppDatabase? database,
     Uuid? uuid,
-  }) : _database = database ?? AppDatabase.instance,
-       _uuid = uuid ?? const Uuid();
+  })  : _database = database ?? AppDatabase.instance,
+        _uuid = uuid ?? const Uuid();
 
   final AppDatabase _database;
   final Uuid _uuid;
@@ -54,6 +74,11 @@ class PurchaseService {
       if (item.quantity <= 0) {
         throw ArgumentError(
           'Quantity for ${item.productName} must be greater than zero.',
+        );
+      }
+      if (item.conversionToBase <= 0) {
+        throw ArgumentError(
+          'Conversion for ${item.productName} must be greater than zero.',
         );
       }
       if (item.unitCost < 0) {
@@ -90,33 +115,40 @@ class PurchaseService {
 
       for (final item in items) {
         final lineTotal = item.total;
-        final unitCost = Money.round(item.unitCost);
+        final baseQty = item.baseQuantity;
+        final baseCost = item.baseUnitCost;
+        final unitLabel = item.unitName?.trim();
 
         await txn.insert('purchase_items', {
           'id': _uuid.v4(),
           'purchase_id': purchaseId,
           'product_id': item.productId,
-          'quantity': item.quantity,
-          'unit_cost': unitCost,
+          'quantity': baseQty,
+          'unit_cost': baseCost,
           'total': lineTotal,
         });
 
-        // Weighted average cost update
         await _updateWac(
           txn: txn,
           productId: item.productId,
-          incomingQty: item.quantity,
-          purchaseUnitCost: unitCost,
+          incomingQty: baseQty,
+          purchaseUnitCost: baseCost,
         );
+
+        final reason =
+            (unitLabel == null || unitLabel.isEmpty || item.conversionToBase == 1)
+                ? 'Purchase received'
+                : 'Purchase received: ${item.quantity} $unitLabel '
+                    '(=${_fmt(baseQty)} base)';
 
         await txn.insert('stock_movements', {
           'id': _uuid.v4(),
           'product_id': item.productId,
           'movement_type': 'purchase_received',
-          'quantity': item.quantity,
-          'unit_cost': unitCost,
+          'quantity': baseQty,
+          'unit_cost': baseCost,
           'reference_id': purchaseId,
-          'reason': 'Purchase received',
+          'reason': reason,
           'created_at': now,
         });
       }
@@ -214,5 +246,10 @@ class PurchaseService {
       where: 'id = ?',
       whereArgs: [productId],
     );
+  }
+
+  String _fmt(double v) {
+    if (v == v.truncateToDouble()) return v.toInt().toString();
+    return v.toStringAsFixed(2);
   }
 }
