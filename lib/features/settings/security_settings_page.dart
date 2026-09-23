@@ -22,6 +22,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
   bool _bioPreferred = true;
   bool _bioAvailable = false;
   bool _allowNegativeStock = false;
+  bool _requireUnitPick = false;
   double _largeDiscountPct = 20;
   int _overdueDays = 30;
 
@@ -38,6 +39,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
     final bioPref = await _security.isBiometricPreferred();
     final bioAvail = await _security.canCheckBiometrics();
     final neg = await _policies.getAllowNegativeStock();
+    final requirePick = await _policies.getRequireUnitPick();
     final disc = await _policies.getLargeDiscountPercent();
     final overdue = await _policies.getOverdueDebtDays();
     if (!mounted) return;
@@ -47,6 +49,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
       _bioPreferred = bioPref;
       _bioAvailable = bioAvail;
       _allowNegativeStock = neg;
+      _requireUnitPick = requirePick;
       _largeDiscountPct = disc;
       _overdueDays = overdue;
       _loading = false;
@@ -257,6 +260,17 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                   value: _allowNegativeStock,
                   onChanged: (v) async {
                     await _policies.setAllowNegativeStock(v);
+                    await _load();
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Always pick unit at POS'),
+                  subtitle: const Text(
+                    'Show unit chooser even when a product has only one unit',
+                  ),
+                  value: _requireUnitPick,
+                  onChanged: (v) async {
+                    await _policies.setRequireUnitPick(v);
                     await _load();
                   },
                 ),
