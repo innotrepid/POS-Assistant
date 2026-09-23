@@ -408,9 +408,16 @@ class _InventoryPageState extends State<InventoryPage> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddProduct,
-        child: const Icon(Icons.add),
+      // AppShell uses extendBody: true + bottom NavigationBar — lift FAB so it stays tappable.
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 72),
+        child: FloatingActionButton(
+          heroTag: 'inventory_add_product',
+          onPressed: _showAddProduct,
+          tooltip: 'Add product',
+          child: const Icon(Icons.add),
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -426,7 +433,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       child: Text('No products yet. Tap + to add.'),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 88),
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 140),
                       itemCount: _products.length,
                       itemBuilder: (context, index) {
                         final p = _products[index];
