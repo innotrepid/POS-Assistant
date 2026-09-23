@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
+import '../../core/models/product_unit.dart';
 import '../../core/models/supplier.dart';
 import '../../core/utils/money.dart';
 import '../../services/inventory_service.dart';
@@ -9,16 +10,20 @@ import '../../services/supplier_service.dart';
 
 class _DraftLine {
   Product product;
+  ProductUnit unit;
   double quantity;
   double unitCost;
 
   _DraftLine({
     required this.product,
+    required this.unit,
     required this.quantity,
     required this.unitCost,
   });
 
   double get total => Money.round(quantity * unitCost);
+
+  double get baseQuantity => quantity * unit.conversionToBase;
 }
 
 class ReceivePurchasePage extends StatefulWidget {
@@ -46,7 +51,6 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
   double get _subtotal =>
       Money.round(_lines.fold<double>(0, (s, l) => s + l.total));
 
-  /// Products this supplier is known to bring (name match), else all stock.
   List<Product> get _productChoices {
     final all = _products;
     final supplies = _supplier?.supplies ?? [];
@@ -91,6 +95,15 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
     }
   }
 
+  Future<List<ProductUnit>> _unitsFor(Product p) async {
+    var units = await _inventory.getUnits(p.id);
+    if (units.isEmpty) {
+      await _inventory.ensureDefaultUnit(p.id);
+      units = await _inventory.getUnits(p.id);
+    }
+    return units;
+  }
+
   Future<void> _addLine() async {
     final choices = _productChoices;
     if (choices.isEmpty) {
@@ -105,6 +118,11 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
     }
 
     Product? selected = choices.first;
+    var units = await _unitsFor(selected!);
+    ProductUnit? selectedUnit = units.isEmpty
+        ? null
+        : units.firstWhere((u) => u.isDefault, orElse: () => units.first);
+
     final qtyCtrl = TextEditingController(text: '1');
     final costCtrl = TextEditingController(
       text: selected.costPrice?.toStringAsFixed(2) ?? '0',
@@ -140,20 +158,57 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
                             ),
                           )
                           .toList(),
-                      onChanged: (p) {
+                      onChanged: (p) async {
                         if (p == null) return;
-                        setLocal(() {
-                          selected = p;
-                          costCtrl.text =
-                              p.costPrice?.toStringAsFixed(2) ?? '0';
-                        });
+                        selected = p;
+                        units = await _unitsFor(p);
+                        selectedUnit = units.isEmpty
+                            ? null
+                            : units.firstWhere((u) => u.isDefault,
+                                orElse: () => units.first);
+                        costCtrl.text =
+                            p.costPrice?.toStringAsFixed(2) ?? '0';
+                        setLocal(() {});
                       },
                       decoration: const InputDecoration(labelText: 'Product'),
                     ),
                     const SizedBox(height: 12),
+                    if (units.isNotEmpty) ...[
+                      Text('Unit',
+                          style: Theme.of(context).textTheme.labelLarge),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final u in units)
+                            ChoiceChip(
+                              label: Text(u.unitName),
+                              selected: selectedUnit?.id == u.id,
+                              onSelected: (_) =>
+                                  setLocal(() => selectedUnit = u),
+                            ),
+                        ],
+                      ),
+                      if (selectedUnit != null &&
+                          selectedUnit!.conversionToBase != 1)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            '1 ${selectedUnit!.unitName} = '
+                            '${_fmt(selectedUnit!.conversionToBase)} ${selected!.unit}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                    ],
                     TextField(
                       controller: qtyCtrl,
-                      decoration: const InputDecoration(labelText: 'Quantity'),
+                      decoration: InputDecoration(
+                        labelText: selectedUnit == null
+                            ? 'Quantity'
+                            : 'Quantity (${selectedUnit!.unitName})',
+                      ),
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
@@ -161,7 +216,11 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: costCtrl,
-                      decoration: const InputDecoration(labelText: 'Unit cost'),
+                      decoration: InputDecoration(
+                        labelText: selectedUnit == null
+                            ? 'Unit cost'
+                            : 'Cost per ${selectedUnit!.unitName}',
+                      ),
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
@@ -187,10 +246,18 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
 
     if (ok != true || selected == null) return;
 
+    var unit = selectedUnit;
+    if (unit == null) {
+      final u = await _unitsFor(selected!);
+      if (u.isEmpty) return;
+      unit = u.first;
+    }
+
     setState(() {
       _lines.add(
         _DraftLine(
           product: selected!,
+          unit: unit!,
           quantity: Money.parse(qtyCtrl.text),
           unitCost: Money.parse(costCtrl.text),
         ),
@@ -223,6 +290,8 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
                 productName: l.product.name,
                 quantity: l.quantity,
                 unitCost: l.unitCost,
+                unitName: l.unit.unitName,
+                conversionToBase: l.unit.conversionToBase,
               ),
             )
             .toList(),
@@ -242,6 +311,11 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
         _saving = false;
       });
     }
+  }
+
+  String _fmt(double v) {
+    if (v == v.truncateToDouble()) return v.toInt().toString();
+    return v.toStringAsFixed(2);
   }
 
   @override
@@ -314,7 +388,9 @@ class _ReceivePurchasePageState extends State<ReceivePurchasePage> {
                     contentPadding: EdgeInsets.zero,
                     title: Text(_lines[i].product.name),
                     subtitle: Text(
-                      '${_lines[i].quantity} × ${Money.format(_lines[i].unitCost)}',
+                      '${_fmt(_lines[i].quantity)} ${_lines[i].unit.unitName}'
+                      ' × ${Money.format(_lines[i].unitCost)}'
+                      '${_lines[i].unit.conversionToBase != 1 ? ' → ${_fmt(_lines[i].baseQuantity)} ${_lines[i].product.unit}' : ''}',
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
