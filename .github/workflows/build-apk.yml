@@ -1,6 +1,7 @@
 name: Build APK
 
 on:
+  # Run from Actions tab → "Build APK" → Run workflow (no file edit needed)
   workflow_dispatch:
     inputs:
       build_type:
@@ -14,12 +15,15 @@ on:
   push:
     branches:
       - foundation
+      - Mercate_UnitConversion_Update
+      - main
     paths:
       - lib/**
       - pubspec.yaml
       - pubspec.lock
       - assets/**
       - scripts/**
+      - android/**
       - .github/workflows/build-apk.yml
 
 concurrency:
@@ -92,7 +96,7 @@ jobs:
         env:
           BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
         run: |
-          echo "Building Mercate ($BUILD_TYPE)"
+          echo "Building Mercate ($BUILD_TYPE) on ${{ github.ref_name }}"
           if [ "$BUILD_TYPE" = "debug" ]; then
             flutter build apk --debug
           else
@@ -103,7 +107,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: mercate-apk
+          name: mercate-apk-${{ github.ref_name }}
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -112,7 +116,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: analyze-log
+          name: analyze-log-${{ github.ref_name }}
           path: analyze.txt
           if-no-files-found: ignore
           retention-days: 7
