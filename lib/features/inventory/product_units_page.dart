@@ -72,6 +72,7 @@ class _ProductUnitsPageState extends State<ProductUnitsPage> {
           ? _fmt(existing.conversionToBase)
           : '1',
     );
+    final barcodeCtrl = TextEditingController(text: existing?.barcode ?? '');
     var isDefault = existing?.isDefault ?? false;
 
     final existingNames =
@@ -149,6 +150,16 @@ class _ProductUnitsPageState extends State<ProductUnitsPage> {
                         decimal: true,
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: barcodeCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Barcode (optional)',
+                        hintText: 'EAN / pack code for this unit',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.text,
+                    ),
                     const SizedBox(height: 8),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
@@ -209,6 +220,9 @@ class _ProductUnitsPageState extends State<ProductUnitsPage> {
           conversionToBase: conv,
           sellingPrice: price,
           isDefault: isDefault,
+          barcode: barcodeCtrl.text.trim().isEmpty
+              ? null
+              : barcodeCtrl.text.trim(),
         );
       } else {
         await _inventory.updateUnit(
@@ -217,6 +231,9 @@ class _ProductUnitsPageState extends State<ProductUnitsPage> {
             conversionToBase: conv,
             sellingPrice: price,
             isDefault: isDefault || existing.isDefault,
+            barcode: barcodeCtrl.text.trim().isEmpty
+                ? null
+                : barcodeCtrl.text.trim(),
           ),
         );
       }
@@ -313,9 +330,14 @@ class _ProductUnitsPageState extends State<ProductUnitsPage> {
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                           subtitle: Text(
-                            u.conversionToBase == 1
-                                ? 'Base unit · ${Money.format(u.sellingPrice)}'
-                                : '1 ${u.unitName} = ${_fmt(u.conversionToBase)} ${product.unit} · ${Money.format(u.sellingPrice)}',
+                            [
+                              if (u.conversionToBase == 1)
+                                'Base unit · ${Money.format(u.sellingPrice)}'
+                              else
+                                '1 ${u.unitName} = ${_fmt(u.conversionToBase)} ${product.unit} · ${Money.format(u.sellingPrice)}',
+                              if (u.barcode != null && u.barcode!.isNotEmpty)
+                                'code ${u.barcode}',
+                            ].join(' · '),
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
