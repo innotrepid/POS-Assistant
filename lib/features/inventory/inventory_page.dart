@@ -110,26 +110,36 @@ class _InventoryPageState extends State<InventoryPage> {
                     ),
                     TextField(
                       controller: unitController,
-                      decoration: const InputDecoration(labelText: 'Or type unit'),
+                      decoration:
+                          const InputDecoration(labelText: 'Or type unit'),
                       onChanged: (v) => setLocal(() => selectedUnit = v),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: priceController,
-                      decoration: const InputDecoration(labelText: 'Selling price'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'Selling price'),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: costController,
-                      decoration: const InputDecoration(labelText: 'Cost price'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'Cost price'),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: stockController,
-                      decoration: const InputDecoration(labelText: 'Opening stock'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'Opening stock'),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -137,7 +147,9 @@ class _InventoryPageState extends State<InventoryPage> {
                       decoration: const InputDecoration(
                         labelText: 'Minimum stock (alert below this)',
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                     ),
                   ],
                 ),
@@ -200,33 +212,58 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
-  Future<void> _addStock(Product product) async {
+  /// Market / supplier trip — add stock without suppliers tab.
+  Future<void> _restock(Product product) async {
     final qtyController = TextEditingController();
     final costController = TextEditingController(
       text: product.costPrice?.toStringAsFixed(2) ?? '',
     );
+    final noteController = TextEditingController();
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Add stock · ${product.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: qtyController,
-                decoration: InputDecoration(labelText: 'Quantity (${product.unit})'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                autofocus: true,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: costController,
-                decoration: const InputDecoration(labelText: 'Unit cost'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
-            ],
+          title: Text('Bought today · ${product.name}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'After market or supplier — no supplier account needed.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: qtyController,
+                  decoration: InputDecoration(
+                    labelText: 'Quantity (${product.unit})',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: costController,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit cost (what you paid)',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteController,
+                  decoration: const InputDecoration(
+                    labelText: 'Note (optional)',
+                    hintText: 'e.g. Wakulima, Marikiti',
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -235,7 +272,7 @@ class _InventoryPageState extends State<InventoryPage> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Add'),
+              child: const Text('Add stock'),
             ),
           ],
         );
@@ -247,14 +284,133 @@ class _InventoryPageState extends State<InventoryPage> {
     try {
       final qty = Money.parse(qtyController.text);
       final costText = costController.text.trim();
-      await _inventory.addStock(
+      await _inventory.restockBoughtToday(
         productId: product.id,
         quantity: qty,
         unitCost: costText.isEmpty ? null : Money.parse(costText),
-        movementType: 'purchase_received',
-        reason: 'Manual stock in',
+        note: noteController.text,
       );
       await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Restocked ${_fmt(qty)} ${product.unit} of ${product.name}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
+
+  Future<void> _spoilage(Product product) async {
+    final qtyController = TextEditingController();
+    var reason = kSpoilageReasons.first;
+    final otherController = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: Text('Spoilage · ${product.name}'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Removes stock that went bad. Pick a reason.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: qtyController,
+                      decoration: InputDecoration(
+                        labelText: 'Quantity (${product.unit})',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      autofocus: true,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Reason',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final r in kSpoilageReasons)
+                          ChoiceChip(
+                            label: Text(r),
+                            selected: reason == r,
+                            onSelected: (_) => setLocal(() => reason = r),
+                          ),
+                      ],
+                    ),
+                    if (reason == 'Other') ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: otherController,
+                        decoration: const InputDecoration(
+                          labelText: 'Describe',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Record spoilage'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (ok != true) return;
+
+    try {
+      final qty = Money.parse(qtyController.text);
+      final why = reason == 'Other'
+          ? (otherController.text.trim().isEmpty
+              ? 'Other'
+              : otherController.text.trim())
+          : reason;
+      await _inventory.recordSpoilage(
+        productId: product.id,
+        quantity: qty,
+        reason: why,
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Spoilage: ${_fmt(qty)} ${product.unit} · $why',
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -357,7 +513,10 @@ class _InventoryPageState extends State<InventoryPage> {
                   children: [
                     Text(
                       product.name,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -384,9 +543,17 @@ class _InventoryPageState extends State<InventoryPage> {
                 ),
               ),
               IconButton.filledTonal(
-                onPressed: () => _addStock(product),
-                icon: const Icon(Icons.add_box_outlined),
-                tooltip: 'Add stock',
+                onPressed: () => _restock(product),
+                icon: const Icon(Icons.add_shopping_cart_outlined),
+                tooltip: 'Bought today',
+              ),
+              IconButton(
+                onPressed: qty > 0 ? () => _spoilage(product) : null,
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: qty > 0 ? scheme.error : null,
+                ),
+                tooltip: 'Spoilage',
               ),
             ],
           ),
