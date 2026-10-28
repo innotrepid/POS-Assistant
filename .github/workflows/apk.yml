@@ -34,7 +34,7 @@ jobs:
       - name: Generate Android platform
         run: flutter create . --project-name mercate --org com.aetherion --platforms=android
 
-      - name: Configure package id, label, desugaring
+      - name: Configure package id, label, minSdk
         run: |
           set -e
           for f in android/app/build.gradle android/app/build.gradle.kts; do
@@ -43,6 +43,9 @@ jobs:
             sed -i "s/applicationId \".*\"/applicationId \"com.aetherion.mercate\"/" "$f" || true
             sed -i 's/namespace *= *".*"/namespace = "com.aetherion.mercate"/' "$f" || true
             sed -i "s/namespace \".*\"/namespace \"com.aetherion.mercate\"/" "$f" || true
+            # Ensure minSdk high enough for notifications
+            sed -i 's/minSdk *= *.*/minSdk = 24/' "$f" || true
+            sed -i 's/minSdkVersion *.*/minSdkVersion 24/' "$f" || true
           done
 
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
@@ -51,34 +54,10 @@ jobs:
             grep -q USE_BIOMETRIC android/app/src/main/AndroidManifest.xml || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' android/app/src/main/AndroidManifest.xml
           fi
 
-          if [ -f android/app/build.gradle.kts ]; then
-            if ! grep -q isCoreLibraryDesugaringEnabled android/app/build.gradle.kts; then
-              sed -i '/compileOptions {/a\        isCoreLibraryDesugaringEnabled = true' android/app/build.gradle.kts
-            fi
-            if ! grep -q desugar_jdk_libs android/app/build.gradle.kts; then
-              if grep -q 'dependencies {' android/app/build.gradle.kts; then
-                sed -i '/dependencies {/a\    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' android/app/build.gradle.kts
-              else
-                printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> android/app/build.gradle.kts
-              fi
-            fi
-          elif [ -f android/app/build.gradle ]; then
-            if ! grep -q coreLibraryDesugaringEnabled android/app/build.gradle; then
-              sed -i '/compileOptions {/a\        coreLibraryDesugaringEnabled true' android/app/build.gradle
-            fi
-            if ! grep -q desugar_jdk_libs android/app/build.gradle; then
-              if grep -q 'dependencies {' android/app/build.gradle; then
-                sed -i "/dependencies {/a\    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'" android/app/build.gradle
-              else
-                printf "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n" >> android/app/build.gradle
-              fi
-            fi
-          fi
-
       - name: Install Mercate launcher icons
         run: python3 scripts/gen_launcher_icons.py
 
-      - name: Normalize desugar
+      - name: Enable core library desugaring
         run: python3 scripts/patch_desugar.py
 
       - run: flutter pub get
@@ -87,15 +66,27 @@ jobs:
         env:
           BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
         run: |
+          set -e
+          echo "Building Mercate ($BUILD_TYPE)"
           if [ "$BUILD_TYPE" = "debug" ]; then
-            flutter build apk --debug
+            flutter build apk --debug --verbose 2>&1 | tee build.log
           else
-            flutter build apk --release
+            flutter build apk --release --verbose 2>&1 | tee build.log
           fi
 
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: mercate-apk
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
