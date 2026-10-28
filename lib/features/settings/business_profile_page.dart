@@ -74,7 +74,12 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
   Future<void> _select(BusinessProfile profile) async {
     if (!profile.enabled) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${profile.label} coming later')),
+        SnackBar(
+          content: Text(
+            '${profile.label} is not available yet. '
+            'We are finishing Mama mboga first.',
+          ),
+        ),
       );
       return;
     }
@@ -92,9 +97,7 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Switched to ${profile.label}. Stock and customers stay on this profile only.',
-          ),
+          content: Text('Using ${profile.label}.'),
         ),
       );
       Navigator.of(context).pop();
@@ -108,6 +111,8 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Shop profile'),
@@ -156,29 +161,39 @@ class _BusinessProfilePageState extends State<BusinessProfilePage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Each profile has its own separate database. '
-                      'Stock, sales, customers and suppliers on Mama mboga '
-                      'do not appear on Duka (and the reverse). '
-                      'Tabs also change: e.g. Mama mboga has no Suppliers tab.',
+                      'Right now only Mama mboga is available. '
+                      'Other shop types will unlock later. '
+                      'Each profile keeps its own stock and sales.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 8),
                     for (final p in BusinessProfile.all)
                       ListTile(
-                        title: Text(p.label),
+                        title: Text(
+                          p.label,
+                          style: TextStyle(
+                            color: p.enabled
+                                ? null
+                                : scheme.onSurface.withValues(alpha: 0.45),
+                          ),
+                        ),
                         subtitle: Text(
                           p.enabled
-                              ? (p.features.suppliers
-                                  ? 'Includes suppliers · ${p.defaultUnit}'
-                                  : 'No suppliers tab · ${p.defaultUnit}')
-                              : 'Coming later',
+                              ? 'Available · units ${p.suggestedUnits.take(4).join(', ')}…'
+                              : 'Unavailable — coming later',
                         ),
                         enabled: p.enabled,
                         selected: _current?.id == p.id,
                         trailing: _current?.id == p.id
-                            ? const Icon(Icons.check_circle)
-                            : null,
-                        onTap: p.enabled ? () => _select(p) : null,
+                            ? Icon(Icons.check_circle, color: scheme.primary)
+                            : (p.enabled
+                                ? null
+                                : Icon(
+                                    Icons.lock_outline,
+                                    size: 18,
+                                    color: scheme.onSurfaceVariant,
+                                  )),
+                        onTap: p.enabled ? () => _select(p) : () => _select(p),
                       ),
                   ],
                 ),
