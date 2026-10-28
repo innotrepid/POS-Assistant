@@ -1,0 +1,110 @@
+name: Build Mercate APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "APK type"
+        required: true
+        default: "release"
+        type: choice
+        options:
+          - release
+          - debug
+  # First push registers the workflow name in the Actions UI.
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/apk.yml"
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Generate Android platform
+        run: flutter create . --project-name mercate --org com.aetherion --platforms=android
+
+      - name: Configure app id, label, permissions, icons
+        run: |
+          set -e
+          for f in android/app/build.gradle android/app/build.gradle.kts; do
+            if [ -f "$f" ]; then
+              sed -i 's/applicationId *= *".*"/applicationId = "com.aetherion.mercate"/' "$f" || true
+              sed -i "s/applicationId \".*\"/applicationId \"com.aetherion.mercate\"/" "$f" || true
+              sed -i 's/namespace *= *".*"/namespace = "com.aetherion.mercate"/' "$f" || true
+              sed -i "s/namespace \".*\"/namespace \"com.aetherion.mercate\"/" "$f" || true
+            fi
+          done
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's/android:label="[^"]*"/android:label="Mercate"/' "$MANIFEST"
+            grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
+            grep -q "USE_FINGERPRINT" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>' "$MANIFEST"
+            grep -q "POST_NOTIFICATIONS" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
+          fi
+          mkdir -p assets/images
+          if [ -f assets/images/mercate_logo.b64 ]; then
+            base64 -d assets/images/mercate_logo.b64 > assets/images/mercate_logo.png || true
+          fi
+          LOGO="assets/images/mercate_logo.png"
+          if [ -f "$LOGO" ] && [ -s "$LOGO" ]; then
+            pip install pillow -q
+            python3 << 'PY'
+from pathlib import Path
+from PIL import Image
+img = Image.open("assets/images/mercate_logo.png").convert("RGBA")
+for folder, size in {
+    "mipmap-mdpi": 48,
+    "mipmap-hdpi": 72,
+    "mipmap-xhdpi": 96,
+    "mipmap-xxhdpi": 144,
+    "mipmap-xxxhdpi": 192,
+}.items():
+    out = Path("android/app/src/main/res") / folder
+    out.mkdir(parents=True, exist_ok=True)
+    r = img.resize((size, size), Image.Resampling.LANCZOS)
+    r.save(out / "ic_launcher.png")
+    r.save(out / "ic_launcher_round.png")
+print("icons ok")
+PY
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        env:
+          BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
+        run: |
+          echo "Building ${BUILD_TYPE} APK..."
+          if [ "${BUILD_TYPE}" = "debug" ]; then
+            flutter build apk --debug
+          else
+            flutter build apk --release
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mercate-apk
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
