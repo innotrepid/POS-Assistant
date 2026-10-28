@@ -15,7 +15,7 @@ class BusinessProfileService {
   Future<BusinessProfile> getProfile() async {
     final raw = await _get(kSettingBusinessProfile);
     return BusinessProfile.tryParse(raw) ??
-        BusinessProfile.byId(BusinessProfileId.duka);
+        BusinessProfile.byId(BusinessProfileId.mamaMboga);
   }
 
   Future<void> setProfile(BusinessProfileId id) async {
