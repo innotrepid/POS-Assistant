@@ -84,9 +84,13 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _closeDay() async {
+    final s = _summary;
+    if (s == null) return;
     final openingCtrl = TextEditingController(text: '0');
     final cashCtrl = TextEditingController(text: '0');
-    final mpesaCtrl = TextEditingController(text: '0');
+    final expectedMpesa = s.salesMpesa;
+    final expectedCashHint = s.salesCash;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -94,24 +98,29 @@ class _DashboardPageState extends State<DashboardPage> {
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Count the till before locking today.'),
+              Text(
+                'M-Pesa is taken from sales recorded today '
+                '(${Money.format(expectedMpesa)}) — no need to re-enter it.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: openingCtrl,
-                decoration: const InputDecoration(labelText: 'Opening cash'),
+                decoration: const InputDecoration(
+                  labelText: 'Opening cash in till',
+                  helperText: 'What was in the till this morning',
+                ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: cashCtrl,
-                decoration: const InputDecoration(labelText: 'Counted cash'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: mpesaCtrl,
-                decoration: const InputDecoration(labelText: 'Counted M-Pesa'),
+                decoration: InputDecoration(
+                  labelText: 'Counted cash now',
+                  helperText: 'Cash sales today about ${Money.format(expectedCashHint)}',
+                ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
             ],
@@ -129,7 +138,7 @@ class _DashboardPageState extends State<DashboardPage> {
         day: DateTime.now(),
         openingCash: Money.parse(openingCtrl.text),
         countedCash: Money.parse(cashCtrl.text),
-        countedMpesa: Money.parse(mpesaCtrl.text),
+        countedMpesa: expectedMpesa,
       );
       await _load();
       if (!mounted) return;
