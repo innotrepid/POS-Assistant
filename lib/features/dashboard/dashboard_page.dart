@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
+import '../../services/business_profile_service.dart';
 import '../../services/day_closing_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/inventory_service.dart';
@@ -35,12 +36,21 @@ class _DashboardPageState extends State<DashboardPage> {
   final _dayClose = DayClosingService();
   final _security = SecurityService();
   final _inventory = InventoryService();
+  final _profiles = BusinessProfileService.instance;
 
   DaySummary? _summary;
   List<Map<String, dynamic>> _todayExpenses = [];
   SpoilageDaySummary _spoilage = SpoilageDaySummary.empty;
   bool _loading = true;
   String? _error;
+  String _shopName = 'My shop';
+
+  String get _greeting {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   @override
   void initState() {
@@ -58,11 +68,13 @@ class _DashboardPageState extends State<DashboardPage> {
       final summary = await _dayClose.getSummary(now);
       final expenses = await _expenses.listExpenses(day: now);
       final spoilage = await _inventory.getSpoilageSummary(now);
+      final shop = await _profiles.getBusinessName();
       if (!mounted) return;
       setState(() {
         _summary = summary;
         _todayExpenses = expenses;
         _spoilage = spoilage;
+        _shopName = shop.isEmpty ? 'My shop' : shop;
         _loading = false;
       });
     } catch (e) {
@@ -71,6 +83,63 @@ class _DashboardPageState extends State<DashboardPage> {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _closeDay() async {
+    final openingCtrl = TextEditingController(text: '0');
+    final cashCtrl = TextEditingController(text: '0');
+    final mpesaCtrl = TextEditingController(text: '0');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Close day'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Count the till before locking today.'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: openingCtrl,
+                decoration: const InputDecoration(labelText: 'Opening cash'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: cashCtrl,
+                decoration: const InputDecoration(labelText: 'Counted cash'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: mpesaCtrl,
+                decoration: const InputDecoration(labelText: 'Counted M-Pesa'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Close day')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _dayClose.closeDay(
+        day: DateTime.now(),
+        openingCash: Money.parse(openingCtrl.text),
+        countedCash: Money.parse(cashCtrl.text),
+        countedMpesa: Money.parse(mpesaCtrl.text),
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Day closed')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
@@ -182,8 +251,17 @@ class _DashboardPageState extends State<DashboardPage> {
                       padding: const EdgeInsets.all(16),
                       children: [
                         Text(
+                          '$_greeting · $_shopName',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
                           DateFormat('EEEE, d MMM').format(DateTime.now()),
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                         const SizedBox(height: 12),
                         Row(
@@ -288,7 +366,7 @@ class _DashboardPageState extends State<DashboardPage> {
                               ),
                               const SizedBox(height: 12),
                               FilledButton(
-                                onPressed: s.isClosed ? null : () {},
+                                onPressed: s.isClosed ? null : _closeDay,
                                 child: Text(s.isClosed ? 'Day closed' : 'Close day'),
                               ),
                             ],
