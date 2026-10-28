@@ -76,62 +76,10 @@ jobs:
           fi
 
       - name: Install Mercate launcher icons
-        run: |
-          set -e
-          pip install pillow -q
-          LOGO="assets/images/Mercate Logo.png"
-          if [ ! -f "$LOGO" ]; then
-            echo "ERROR: Mercate logo not found at $LOGO"
-            ls -la assets/images/ || true
-            exit 1
-          fi
-          cat > /tmp/make_icons.py << 'EOF'
-          from pathlib import Path
-          from PIL import Image
+        run: python3 scripts/gen_launcher_icons.py
 
-          logo_path = Path("assets/images/Mercate Logo.png")
-          img = Image.open(logo_path).convert("RGBA")
-
-          def make_icon(size: int) -> Image.Image:
-              canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-              pad = max(1, size // 10)
-              target = size - pad * 2
-              copy = img.copy()
-              copy.thumbnail((target, target), Image.Resampling.LANCZOS)
-              x = (size - copy.width) // 2
-              y = (size - copy.height) // 2
-              canvas.paste(copy, (x, y), copy)
-              return canvas
-
-          sizes = {
-              "mipmap-mdpi": 48,
-              "mipmap-hdpi": 72,
-              "mipmap-xhdpi": 96,
-              "mipmap-xxhdpi": 144,
-              "mipmap-xxxhdpi": 192,
-          }
-          res = Path("android/app/src/main/res")
-          for folder, size in sizes.items():
-              out_dir = res / folder
-              out_dir.mkdir(parents=True, exist_ok=True)
-              icon = make_icon(size)
-              icon.save(out_dir / "ic_launcher.png")
-              icon.save(out_dir / "ic_launcher_round.png")
-              icon.save(out_dir / "ic_launcher_foreground.png")
-
-          anydpi = res / "mipmap-anydpi-v26"
-          if anydpi.is_dir():
-              for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
-                  xml = anydpi / name
-                  if xml.exists():
-                      text = xml.read_text()
-                      text = text.replace("@drawable/ic_launcher_foreground", "@mipmap/ic_launcher_foreground")
-                      xml.write_text(text)
-
-          print("Mercate launcher icons installed")
-          EOF
-          sed -i 's/^          //' /tmp/make_icons.py
-          python3 /tmp/make_icons.py
+      - name: Normalize desugar
+        run: python3 scripts/patch_desugar.py
 
       - run: flutter pub get
 
