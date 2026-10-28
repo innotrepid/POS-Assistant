@@ -76,7 +76,7 @@ class ProfileFeatures {
     this.produceUnits = false,
   });
 
-  /// Mama mboga — focused produce shop (no suppliers tab).
+  /// Mama mboga — produce stall: units, deni, M-Pesa, split till, no suppliers tab.
   static const mamaMboga = ProfileFeatures(
     sales: true,
     stock: true,
@@ -88,7 +88,8 @@ class ProfileFeatures {
     discounts: true,
     creditSales: true,
     mpesa: true,
-    splitPayments: false,
+    // Cash + M-Pesa on one sale is common at the stall.
+    splitPayments: true,
     barcodes: false,
     categories: false,
     weightSales: true,
@@ -236,10 +237,23 @@ class BusinessProfile {
       id: BusinessProfileId.mamaMboga,
       label: 'Mama mboga / fresh produce',
       description:
-          'Sell by kg, bunch, heap or piece. Stock, cash, M-Pesa, customer '
-          'credit and day close — no supplier clutter.',
+          'Kenyan produce stall: sell by kg, bunch, heap or piece. '
+          'Cash, M-Pesa, split pay, deni (credit), day close. '
+          'Track spoilage as stock adjustment. No supplier tab.',
       defaultUnit: 'kg',
-      suggestedUnits: ['kg', 'bunch', 'heap', 'piece', 'bag', 'dozen'],
+      // Common market units: sukuma (bunch), tomatoes (kg/heap), cabbage (head).
+      suggestedUnits: [
+        'kg',
+        'g',
+        'bunch',
+        'heap',
+        'piece',
+        'head',
+        'bag',
+        'net',
+        'debe',
+        'dozen',
+      ],
       interfaceLevel: InterfaceLevel.simple,
       features: ProfileFeatures.mamaMboga,
     ),
