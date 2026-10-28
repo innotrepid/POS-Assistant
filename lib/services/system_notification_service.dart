@@ -1,6 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-/// Android system tray notifications for important alerts.
+/// Android/iOS system tray notifications for important alerts.
 class SystemNotificationService {
   SystemNotificationService._();
   static final SystemNotificationService instance =
@@ -9,52 +9,102 @@ class SystemNotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  bool _ready = false;
+  bool _initialized = false;
+  bool _permissionGranted = false;
 
-  Future<void> init() async {
-    if (_ready) return;
+  bool get isReady => _initialized && _permissionGranted;
+
+  /// Initialize plugin, create channels, and request OS permission once.
+  /// Safe to call multiple times; permission is only requested when needed.
+  Future<bool> init({bool requestPermission = true}) async {
     try {
-      const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-      const ios = DarwinInitializationSettings();
-      const settings = InitializationSettings(android: android, iOS: ios);
+      if (!_initialized) {
+        const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+        const ios = DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        );
+        const settings = InitializationSettings(android: android, iOS: ios);
 
-      await _plugin.initialize(settings);
+        await _plugin.initialize(settings);
 
+        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
+        await androidPlugin?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            'mercate_inventory',
+            'Inventory',
+            description: 'Low and out-of-stock alerts',
+            importance: Importance.high,
+          ),
+        );
+        await androidPlugin?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            'mercate_debt',
+            'Debt (deni)',
+            description: 'Customer debt and overdue alerts',
+            importance: Importance.high,
+          ),
+        );
+        await androidPlugin?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            'mercate_business',
+            'Business',
+            description: 'General business alerts',
+            importance: Importance.defaultImportance,
+          ),
+        );
+
+        _initialized = true;
+      }
+
+      if (requestPermission) {
+        await requestOsPermission();
+      }
+
+      return isReady;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Ask the OS for notification permission (Android 13+ / iOS).
+  Future<bool> requestOsPermission() async {
+    try {
       final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
 
-      try {
-        await androidPlugin?.requestNotificationsPermission();
-      } catch (_) {}
+      if (androidPlugin != null) {
+        final enabled = await androidPlugin.areNotificationsEnabled();
+        if (enabled == true) {
+          _permissionGranted = true;
+          return true;
+        }
+        final granted = await androidPlugin.requestNotificationsPermission();
+        _permissionGranted = granted == true;
+        return _permissionGranted;
+      }
 
-      await androidPlugin?.createNotificationChannel(
-        const AndroidNotificationChannel(
-          'pos_inventory',
-          'Inventory',
-          description: 'Low and out-of-stock alerts',
-          importance: Importance.high,
-        ),
-      );
-      await androidPlugin?.createNotificationChannel(
-        const AndroidNotificationChannel(
-          'pos_debt',
-          'Debt',
-          description: 'Customer debt and overdue alerts',
-          importance: Importance.high,
-        ),
-      );
-      await androidPlugin?.createNotificationChannel(
-        const AndroidNotificationChannel(
-          'pos_business',
-          'Business',
-          description: 'General business alerts',
-          importance: Importance.defaultImportance,
-        ),
-      );
+      final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      if (iosPlugin != null) {
+        final granted = await iosPlugin.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        _permissionGranted = granted == true;
+        return _permissionGranted;
+      }
 
-      _ready = true;
+      // Desktop / other: treat as granted so in-app still works.
+      _permissionGranted = true;
+      return true;
     } catch (_) {
-      _ready = false;
+      _permissionGranted = false;
+      return false;
     }
   }
 
@@ -66,17 +116,17 @@ class SystemNotificationService {
     String priority = 'info',
   }) async {
     try {
-      await init();
-      if (!_ready) return;
+      await init(requestPermission: false);
+      if (!_initialized || !_permissionGranted) return;
 
       final channelId = switch (category) {
-        'inventory' => 'pos_inventory',
-        'debt' => 'pos_debt',
-        _ => 'pos_business',
+        'inventory' => 'mercate_inventory',
+        'debt' => 'mercate_debt',
+        _ => 'mercate_business',
       };
       final channelName = switch (category) {
         'inventory' => 'Inventory',
-        'debt' => 'Debt',
+        'debt' => 'Debt (deni)',
         _ => 'Business',
       };
 
@@ -87,7 +137,7 @@ class SystemNotificationService {
       final androidDetails = AndroidNotificationDetails(
         channelId,
         channelName,
-        channelDescription: 'POS Assistant alerts',
+        channelDescription: 'Mercate alerts',
         importance: importance,
         priority: priority == 'critical'
             ? Priority.high
