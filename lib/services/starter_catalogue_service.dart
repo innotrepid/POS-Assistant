@@ -14,14 +14,11 @@ class StarterCatalogueService {
   final InventoryService _inventory;
   final BusinessProfileService _profiles;
 
-  /// How many starter lines the current profile would add (0 if unsupported).
   Future<int> availableCount() async {
     final profile = await _profiles.getProfile();
     return StarterCatalogues.forProfile(profile.id).length;
   }
 
-  /// Insert starter products only when the product table is empty.
-  /// Returns the number of products created.
   Future<int> seedIfEmpty({BusinessProfileId? profileId}) async {
     final existing = await _inventory.getAllProducts(activeOnly: false);
     if (existing.isNotEmpty) return 0;
