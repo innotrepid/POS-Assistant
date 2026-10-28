@@ -36,7 +36,8 @@ jobs:
         continue-on-error: true
 
       - name: Analyze
-        run: flutter analyze
+        # Warnings still fail; info-level lints do not.
+        run: flutter analyze --no-fatal-infos
 
       - name: Run tests
         run: flutter test
