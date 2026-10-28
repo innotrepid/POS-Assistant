@@ -66,6 +66,97 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
+  List<String> _unitsFor(dynamic profile, {String? current}) {
+    final units = profile.suggestedUnits.isEmpty
+        ? <String>[profile.defaultUnit as String]
+        : List<String>.from(profile.suggestedUnits as List);
+    for (final extra in ['debe', 'gorogoro', 'kg', 'bunch', 'piece', 'head', 'pack']) {
+      if (!units.contains(extra)) units.add(extra);
+    }
+    if (current != null && current.isNotEmpty && !units.contains(current)) {
+      units.insert(0, current);
+    }
+    return units;
+  }
+
+  Future<void> _editProduct(Product product) async {
+    final profile = await _profiles.getProfile();
+    final nameCtrl = TextEditingController(text: product.name);
+    final priceCtrl = TextEditingController(text: product.sellingPrice.toString());
+    final costCtrl = TextEditingController(text: product.costPrice?.toString() ?? '');
+    final units = _unitsFor(profile, current: product.unit);
+    var selectedUnit = product.unit;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: const Text('Edit product'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: priceCtrl,
+                      decoration: const InputDecoration(labelText: 'Selling price'),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: costCtrl,
+                      decoration: const InputDecoration(labelText: 'Cost (optional)'),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    const SizedBox(height: 12),
+                    Text('Unit (kg, debe/gorogoro, bunch…)', style: Theme.of(context).textTheme.labelLarge),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final u in units)
+                          ChoiceChip(
+                            label: Text(u),
+                            selected: selectedUnit == u,
+                            onSelected: (_) => setLocal(() => selectedUnit = u),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _inventory.updateProduct(product.copyWith(
+        name: nameCtrl.text.trim(),
+        sellingPrice: Money.parse(priceCtrl.text),
+        costPrice: costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
+        unit: selectedUnit,
+        updatedAt: DateTime.now(),
+      ));
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product updated')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   Future<void> _seedStarter() async {
     try {
       final n = await _starter.seedIfEmpty();
@@ -75,7 +166,7 @@ class _InventoryPageState extends State<InventoryPage> {
           content: Text(
             n == 0
                 ? 'Catalogue already has products, or no starter for this profile.'
-                : 'Added $n starter products (edit prices as needed)',
+                : 'Added $n starter products. Tap any item to change price or unit.',
           ),
         ),
       );
@@ -123,10 +214,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 ),
                 if (reason == 'Other') ...[
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: otherCtrl,
-                    decoration: const InputDecoration(labelText: 'Describe'),
-                  ),
+                  TextField(controller: otherCtrl, decoration: const InputDecoration(labelText: 'Describe')),
                 ],
               ],
             ),
@@ -147,9 +235,7 @@ class _InventoryPageState extends State<InventoryPage> {
         reason: why.isEmpty ? 'Other' : why,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Spoilage recorded for ${product.name}')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Spoilage recorded for ${product.name}')));
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -158,9 +244,7 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> _openReceiveGoods() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const ReceivePurchasePage()),
-    );
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ReceivePurchasePage()));
     _load();
   }
 
@@ -170,9 +254,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final priceCtrl = TextEditingController();
     final costCtrl = TextEditingController();
     final qtyCtrl = TextEditingController();
-    final units = profile.suggestedUnits.isEmpty
-        ? <String>[profile.defaultUnit]
-        : List<String>.from(profile.suggestedUnits);
+    final units = _unitsFor(profile);
     var selectedUnit = profile.defaultUnit;
     if (!units.contains(selectedUnit)) selectedUnit = units.first;
 
@@ -188,11 +270,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Name'),
-                      autofocus: true,
-                    ),
+                    TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name'), autofocus: true),
                     const SizedBox(height: 12),
                     TextField(
                       controller: priceCtrl,
@@ -225,7 +303,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       controller: qtyCtrl,
                       decoration: InputDecoration(
                         labelText: 'Opening quantity (optional)',
-                        helperText: 'e.g. 30 $selectedUnit',
+                        helperText: 'e.g. 2 $selectedUnit',
                         border: const OutlineInputBorder(),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -234,14 +312,8 @@ class _InventoryPageState extends State<InventoryPage> {
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Save'),
-                ),
+                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
               ],
             );
           },
@@ -275,9 +347,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Future<void> _manualAddStock(Product product) async {
     final qtyController = TextEditingController(text: '1');
-    final costController = TextEditingController(
-      text: product.costPrice != null ? product.costPrice!.toString() : '',
-    );
+    final costController = TextEditingController(text: product.costPrice?.toString() ?? '');
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -310,9 +380,7 @@ class _InventoryPageState extends State<InventoryPage> {
       await _inventory.restockBoughtToday(
         productId: product.id,
         quantity: Money.parse(qtyController.text),
-        unitCost: costController.text.trim().isEmpty
-            ? null
-            : Money.parse(costController.text),
+        unitCost: costController.text.trim().isEmpty ? null : Money.parse(costController.text),
       );
       await _load();
     } catch (e) {
@@ -332,14 +400,8 @@ class _InventoryPageState extends State<InventoryPage> {
         title: Text('Add stock · ${product.name}'),
         content: const Text('How did the stock arrive?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, 'manual'),
-            child: const Text('Bought today'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, 'supplier'),
-            child: const Text('From supplier'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, 'manual'), child: const Text('Bought today')),
+          FilledButton(onPressed: () => Navigator.pop(context, 'supplier'), child: const Text('From supplier')),
         ],
       ),
     );
@@ -347,9 +409,7 @@ class _InventoryPageState extends State<InventoryPage> {
       await _openReceiveGoods();
       return;
     }
-    if (choice == 'manual') {
-      await _manualAddStock(product);
-    }
+    if (choice == 'manual') await _manualAddStock(product);
   }
 
   @override
@@ -378,19 +438,19 @@ class _InventoryPageState extends State<InventoryPage> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddProduct,
-        child: const Icon(Icons.add),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 72),
+        child: FloatingActionButton.extended(
+          onPressed: _showAddProduct,
+          icon: const Icon(Icons.add),
+          label: const Text('Add item'),
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(_error!, textAlign: TextAlign.center),
-                  ),
-                )
+              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center)))
               : _products.isEmpty
                   ? Center(
                       child: Padding(
@@ -399,7 +459,7 @@ class _InventoryPageState extends State<InventoryPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const Text(
-                              'No products yet. Tap + to add, or load a starter list.',
+                              'No products yet. Tap Add item, or load a starter list for mama mboga.',
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 16),
@@ -413,7 +473,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                     )
                   : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
+                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 160),
                       itemCount: _products.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, index) {
@@ -421,14 +481,10 @@ class _InventoryPageState extends State<InventoryPage> {
                         final qty = _stock[p.id] ?? 0;
                         final low = p.minimumStock > 0 && qty <= p.minimumStock;
                         return ListTile(
-                          title: Text(
-                            p.name,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
+                          onTap: () => _editProduct(p),
+                          title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text(
-                            '${Money.format(p.sellingPrice)} · '
-                            '$qty ${p.unit}'
-                            '${low ? ' · LOW' : ''}',
+                            '${Money.format(p.sellingPrice)} · $qty ${p.unit}${low ? ' · LOW' : ''}',
                             style: TextStyle(color: low ? scheme.error : null),
                           ),
                           trailing: Row(
