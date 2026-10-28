@@ -70,6 +70,21 @@ class InventoryService {
       throw ArgumentError('Selling price cannot be negative.');
     }
 
+    final db = await _database.database;
+    final nameKey = name.trim().toLowerCase();
+    final existing = await db.query(
+      'products',
+      where: 'active = 1 AND lower(name) = ?',
+      whereArgs: [nameKey],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      throw ArgumentError(
+        'A product named "${name.trim()}" already exists. '
+        'Open it on Stock and edit price instead of adding a duplicate.',
+      );
+    }
+
     final now = DateTime.now();
     final product = Product(
       id: _uuid.v4(),
@@ -96,7 +111,6 @@ class InventoryService {
       updatedAt: now,
     );
 
-    final db = await _database.database;
     await db.insert('products', product.toMap());
 
     await _writeAudit(
