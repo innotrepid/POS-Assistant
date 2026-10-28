@@ -50,6 +50,8 @@ class ProfileFeatures {
   final bool branches;
   final bool advancedAudit;
   final bool produceUnits;
+  final bool spoilage;
+  final bool marketRestock;
 
   const ProfileFeatures({
     this.sales = true,
@@ -74,8 +76,11 @@ class ProfileFeatures {
     this.branches = false,
     this.advancedAudit = false,
     this.produceUnits = false,
+    this.spoilage = false,
+    this.marketRestock = false,
   });
 
+  /// Focus profile for Kenyan fresh-produce stalls.
   static const mamaMboga = ProfileFeatures(
     sales: true,
     stock: true,
@@ -87,11 +92,13 @@ class ProfileFeatures {
     discounts: true,
     creditSales: true,
     mpesa: true,
-    splitPayments: false,
+    splitPayments: true,
     barcodes: false,
     categories: false,
     weightSales: true,
     produceUnits: true,
+    spoilage: true,
+    marketRestock: true,
   );
 
   static const simpleCore = ProfileFeatures(
@@ -234,48 +241,59 @@ class BusinessProfile {
       label: 'Mama mboga / fresh produce',
       description:
           'Sell by kg, bunch, heap or piece. Own stock only — no Suppliers tab. '
-          'Cash, M-Pesa, customer credit and day close.',
+          'Cash, M-Pesa, split pay, customer credit, spoilage and day close.',
       defaultUnit: 'kg',
-      suggestedUnits: ['kg', 'bunch', 'heap', 'piece', 'bag', 'dozen'],
+      suggestedUnits: [
+        'kg',
+        'g',
+        'bunch',
+        'heap',
+        'piece',
+        'bag',
+        'debe',
+        'gorogoro',
+        'dozen',
+        'crate',
+        'sachet',
+        'litre',
+      ],
       interfaceLevel: InterfaceLevel.simple,
       features: ProfileFeatures.mamaMboga,
+      enabled: true,
     ),
     BusinessProfile(
       id: BusinessProfileId.duka,
       label: 'Small shop / duka',
-      description:
-          'Everything in simple, plus categories, barcodes, suppliers, '
-          'basic profit, stock adjustments, customer accounts.',
+      description: 'Coming later — focusing on Mama mboga first.',
       defaultUnit: 'piece',
       suggestedUnits: ['piece', 'pack', 'dozen'],
       interfaceLevel: InterfaceLevel.simplePlus,
       features: ProfileFeatures.simplePlus,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.kiosk,
       label: 'Kiosk / convenience',
-      description:
-          'Fast checkout, common products, stock alerts, M-Pesa, credit, '
-          'daily summaries, reorder reminders.',
+      description: 'Coming later — focusing on Mama mboga first.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.simplePlus,
       features: ProfileFeatures.simplePlus,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.butchery,
       label: 'Butchery',
-      description:
-          'Weight-based sales, portions, wastage, purchase cost, margins, '
-          'suppliers and customer debt.',
+      description: 'Coming later — focusing on Mama mboga first.',
       defaultUnit: 'kg',
       suggestedUnits: ['kg', 'piece', 'portion'],
       interfaceLevel: InterfaceLevel.operational,
       features: ProfileFeatures.operational,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.restaurant,
       label: 'Restaurant / food',
-      description: 'Menu, kitchen flow and modifiers — coming later on phone.',
+      description: 'Coming later.',
       defaultUnit: 'portion',
       interfaceLevel: InterfaceLevel.operational,
       features: ProfileFeatures.operational,
@@ -284,7 +302,7 @@ class BusinessProfile {
     BusinessProfile(
       id: BusinessProfileId.pharmacy,
       label: 'Pharmacy / health retail',
-      description: 'Batch and expiry tracking — staged after core profiles.',
+      description: 'Coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.controlled,
       features: ProfileFeatures.controlled,
@@ -295,7 +313,7 @@ class BusinessProfile {
     BusinessProfile(
       id: BusinessProfileId.hardware,
       label: 'Hardware / building supplies',
-      description: 'Bulk units and quotations — coming later.',
+      description: 'Coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.operationalPlus,
       features: ProfileFeatures.advanced,
@@ -304,7 +322,7 @@ class BusinessProfile {
     BusinessProfile(
       id: BusinessProfileId.clothing,
       label: 'Boutique / clothing',
-      description: 'Sizes and colours (variants) — coming later.',
+      description: 'Coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.operational,
       features: ProfileFeatures.advanced,
@@ -313,7 +331,7 @@ class BusinessProfile {
     BusinessProfile(
       id: BusinessProfileId.electronics,
       label: 'Electronics / phone shop',
-      description: 'Serial/IMEI and warranties — coming later.',
+      description: 'Coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.advanced,
       features: ProfileFeatures.advanced,
@@ -322,17 +340,17 @@ class BusinessProfile {
     BusinessProfile(
       id: BusinessProfileId.wholesale,
       label: 'Wholesale / distributor',
-      description:
-          'Bulk pricing, customer tiers, credit limits, purchase orders (later).',
+      description: 'Coming later.',
       defaultUnit: 'carton',
       suggestedUnits: ['carton', 'dozen', 'piece', 'bag'],
       interfaceLevel: InterfaceLevel.advanced,
       features: ProfileFeatures.advanced,
+      enabled: false,
     ),
     BusinessProfile(
       id: BusinessProfileId.supermarket,
       label: 'Supermarket / large retail',
-      description: 'Multi-user and promotions — PC / later stage.',
+      description: 'Coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.advanced,
       features: ProfileFeatures.full,
@@ -341,8 +359,7 @@ class BusinessProfile {
     BusinessProfile(
       id: BusinessProfileId.multiBranch,
       label: 'Multi-branch business',
-      description:
-          'Branches, transfers, consolidated reporting — management layer later.',
+      description: 'Coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.management,
       features: ProfileFeatures.full,
@@ -351,11 +368,11 @@ class BusinessProfile {
     BusinessProfile(
       id: BusinessProfileId.administrator,
       label: 'Business owner / administrator',
-      description:
-          'Full configuration, permissions, financial controls, audit, analytics.',
+      description: 'Coming later.',
       defaultUnit: 'piece',
       interfaceLevel: InterfaceLevel.full,
       features: ProfileFeatures.full,
+      enabled: false,
     ),
   ];
 
