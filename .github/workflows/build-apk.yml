@@ -1,5 +1,6 @@
 name: Build APK
 
+# Manual only — use Actions → Build APK → Run workflow
 on:
   workflow_dispatch:
     inputs:
@@ -11,14 +12,6 @@ on:
         options:
           - release
           - debug
-  push:
-    branches: [foundation]
-    paths:
-      - 'lib/**'
-      - 'pubspec.yaml'
-      - 'pubspec.lock'
-      - 'assets/**'
-      - '.github/workflows/build-apk.yml'
 
 concurrency:
   group: build-apk-${{ github.ref }}
@@ -38,7 +31,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -53,7 +46,7 @@ jobs:
         run: |
           flutter create . --project-name mercate --org com.aetherion --platforms=android
 
-      - name: Set applicationId, label, logo, launcher icons
+      - name: Set applicationId, label, permissions, launcher icons
         run: |
           for f in android/app/build.gradle android/app/build.gradle.kts; do
             if [ -f "$f" ]; then
@@ -101,7 +94,6 @@ PY
           else
             echo "No logo found for launcher icons"
           fi
-          ls -la assets/images/ || true
 
       - name: Get dependencies
         run: flutter pub get
