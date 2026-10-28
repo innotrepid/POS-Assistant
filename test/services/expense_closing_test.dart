@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:pos_assistant/core/database/app_database.dart';
-import 'package:pos_assistant/services/day_closing_service.dart';
-import 'package:pos_assistant/services/expense_service.dart';
+import 'package:mercate/core/database/app_database.dart';
+import 'package:mercate/services/day_closing_service.dart';
+import 'package:mercate/services/expense_service.dart';
 
 void main() {
   setUpAll(() {
