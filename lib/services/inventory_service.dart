@@ -3,6 +3,35 @@ import 'package:uuid/uuid.dart';
 import '../core/database/app_database.dart';
 import '../core/models/product.dart';
 import '../core/utils/money.dart';
+import 'expense_service.dart';
+
+/// Common spoilage reasons for produce stalls (Kenya).
+const List<String> kSpoilageReasons = [
+  'Rotten / bad',
+  'Overripe',
+  'Damaged in transport',
+  'Dried out / wilted',
+  'Eaten / taken home',
+  'Other',
+];
+
+class SpoilageDaySummary {
+  final double quantityUnits;
+  final double estimatedCost;
+  final int eventCount;
+
+  const SpoilageDaySummary({
+    required this.quantityUnits,
+    required this.estimatedCost,
+    required this.eventCount,
+  });
+
+  static const empty = SpoilageDaySummary(
+    quantityUnits: 0,
+    estimatedCost: 0,
+    eventCount: 0,
+  );
+}
 
 class InventoryService {
   InventoryService({
@@ -199,7 +228,6 @@ class InventoryService {
     final db = await _database.database;
 
     await db.transaction((txn) async {
-      // Update weighted average cost first (if cost is given)
       if (unitCost != null && unitCost >= 0) {
         await _updateWeightedAverageCost(
           txn: txn,
@@ -226,6 +254,25 @@ class InventoryService {
       entityType: 'product',
       entityId: productId,
       newValue: 'qty=$quantity, type=$movementType',
+      reason: reason,
+    );
+  }
+
+  /// Mama mboga / duka restock after market trip — no supplier required.
+  Future<void> restockBoughtToday({
+    required String productId,
+    required double quantity,
+    double? unitCost,
+    String? note,
+  }) async {
+    final reason = (note == null || note.trim().isEmpty)
+        ? 'Bought today'
+        : 'Bought today: ${note.trim()}';
+    await addStock(
+      productId: productId,
+      quantity: quantity,
+      unitCost: unitCost,
+      movementType: 'market_restock',
       reason: reason,
     );
   }
@@ -264,11 +311,94 @@ class InventoryService {
     });
 
     await _writeAudit(
-      action: 'stock_removed',
+           action: 'stock_removed',
       entityType: 'product',
       entityId: productId,
       newValue: 'qty=$quantity, type=$movementType',
       reason: reason,
+    );
+  }
+
+  /// Record produce that went bad — reduces stock and logs reason.
+  Future<void> recordSpoilage({
+    required String productId,
+    required double quantity,
+    required String reason,
+  }) async {
+    final why = reason.trim();
+    if (why.isEmpty) {
+      throw ArgumentError('A spoilage reason is required.');
+    }
+
+    final product = await getProduct(productId);
+    final unitCost = product?.costPrice;
+
+    await removeStock(
+      productId: productId,
+      quantity: quantity,
+      movementType: 'spoilage',
+      reason: why,
+      unitCost: unitCost,
+    );
+  }
+
+  /// Spoilage for a calendar day: event count, total qty, estimated cost lost.
+  Future<SpoilageDaySummary> getSpoilageSummary(DateTime day) async {
+    final range = DayRange.of(day);
+    final db = await _database.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT
+        COUNT(*) AS events,
+        COALESCE(SUM(ABS(quantity)), 0) AS qty,
+        COALESCE(SUM(ABS(quantity) * COALESCE(unit_cost, 0)), 0) AS cost
+      FROM stock_movements
+      WHERE movement_type = 'spoilage'
+        AND created_at >= ? AND created_at < ?
+      ''',
+      [range.startIso, range.endIso],
+    );
+    if (rows.isEmpty) return SpoilageDaySummary.empty;
+    return SpoilageDaySummary(
+      quantityUnits:
+          (rows.first['qty'] as num?)?.toDouble() ?? 0,
+      estimatedCost: Money.round(
+        (rows.first['cost'] as num?)?.toDouble() ?? 0,
+      ),
+      eventCount: (rows.first['events'] as int?) ?? 0,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listSpoilage({
+    DateTime? day,
+    int limit = 50,
+  }) async {
+    final db = await _database.database;
+    if (day != null) {
+      final range = DayRange.of(day);
+      return db.rawQuery(
+        '''
+        SELECT m.*, p.name AS product_name, p.unit AS product_unit
+        FROM stock_movements m
+        LEFT JOIN products p ON p.id = m.product_id
+        WHERE m.movement_type = 'spoilage'
+          AND m.created_at >= ? AND m.created_at < ?
+        ORDER BY m.created_at DESC
+        LIMIT ?
+        ''',
+        [range.startIso, range.endIso, limit],
+      );
+    }
+    return db.rawQuery(
+      '''
+      SELECT m.*, p.name AS product_name, p.unit AS product_unit
+      FROM stock_movements m
+      LEFT JOIN products p ON p.id = m.product_id
+      WHERE m.movement_type = 'spoilage'
+      ORDER BY m.created_at DESC
+      LIMIT ?
+      ''',
+      [limit],
     );
   }
 
@@ -310,7 +440,6 @@ class InventoryService {
     required double incomingQuantity,
     required double purchaseUnitCost,
   }) async {
-    // Current stock
     final stockResult = await txn.rawQuery(
       '''
       SELECT COALESCE(SUM(quantity), 0) AS stock
@@ -322,7 +451,6 @@ class InventoryService {
     final currentStock =
         (stockResult.first['stock'] as num?)?.toDouble() ?? 0;
 
-    // Current average cost
     final productResult = await txn.query(
       'products',
       columns: ['cost_price'],
