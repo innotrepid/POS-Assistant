@@ -33,8 +33,8 @@ void main() {
         category: 'Transport',
         amount: 50,
         paymentMethod: 'cash',
-        notes: 'matatu',
-        occurredAt: now,
+        description: 'matatu',
+        at: now,
       );
       final summary = await dayClose.getSummary(now);
       expect(summary.expensesTotal, 50);
@@ -47,15 +47,14 @@ void main() {
         category: 'Other',
         amount: 20,
         paymentMethod: 'cash',
-        occurredAt: now,
+        at: now,
       );
-      final closing = await dayClose.closeDay(
-        businessDate: now,
+      await dayClose.closeDay(
+        day: now,
         openingCash: 100,
         countedCash: 80,
         countedMpesa: 0,
       );
-      expect(closing, isNotNull);
       final summary = await dayClose.getSummary(now);
       expect(summary.isClosed, isTrue);
     });
