@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'core/database/app_database.dart';
 import 'core/models/business_profile.dart';
 import 'core/theme/app_theme.dart';
 import 'features/assistant/assistant_page.dart';
@@ -16,6 +15,7 @@ import 'services/alert_scanner_service.dart';
 import 'services/business_profile_service.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
+import 'services/shop_service.dart';
 import 'services/theme_service.dart';
 
 final themeController = ThemeController();
@@ -24,7 +24,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await AppDatabase.instance.database;
+    await ShopService().ensureActiveShop();
   } catch (_) {}
 
   await themeController.load();
@@ -62,16 +62,22 @@ class _RootGate extends StatefulWidget {
 
 class _RootGateState extends State<_RootGate> {
   final _security = SecurityService();
+  final _shops = ShopService();
   bool _loading = true;
   bool _locked = false;
+  int _shellEpoch = 0;
 
   @override
   void initState() {
     super.initState();
-    _check();
+    _bootstrap();
   }
 
-  Future<void> _check() async {
+  Future<void> _bootstrap() async {
+    try {
+      await _shops.ensureActiveShop();
+    } catch (_) {}
+
     try {
       final enabled = await _security.isLockEnabled();
       if (!mounted) return;
@@ -88,6 +94,18 @@ class _RootGateState extends State<_RootGate> {
     }
   }
 
+  void _onShopChanged() {
+    setState(() {
+      _shellEpoch++;
+      _locked = false;
+    });
+    // Re-check lock for the newly active shop (PIN is per-shop).
+    _security.isLockEnabled().then((enabled) {
+      if (!mounted) return;
+      setState(() => _locked = enabled);
+    }).catchError((_) {});
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -100,7 +118,10 @@ class _RootGateState extends State<_RootGate> {
         onUnlocked: () => setState(() => _locked = false),
       );
     }
-    return const AppShell();
+    return AppShell(
+      key: ValueKey('shell_$_shellEpoch'),
+      onShopChanged: _onShopChanged,
+    );
   }
 }
 
@@ -119,7 +140,9 @@ class _NavItem {
 }
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  final VoidCallback? onShopChanged;
+
+  const AppShell({super.key, this.onShopChanged});
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -178,6 +201,7 @@ class _AppShellState extends State<AppShell> {
           unreadCount: _unread,
           onOpenNotifications: _openNotifications,
           onOpenAssistant: _openAssistant,
+          onShopChanged: widget.onShopChanged,
         ),
         destination: const NavigationDestination(
           icon: Icon(Icons.dashboard_outlined),
