@@ -16,6 +16,7 @@ import 'services/business_profile_service.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
 import 'services/shop_service.dart';
+import 'services/system_notification_service.dart';
 import 'services/theme_service.dart';
 
 final themeController = ThemeController();
@@ -25,6 +26,11 @@ Future<void> main() async {
 
   try {
     await ShopService().ensureActiveShop();
+  } catch (_) {}
+
+  // Request OS notification permission early (Android 13+ shows the dialog).
+  try {
+    await SystemNotificationService.instance.init(requestPermission: true);
   } catch (_) {}
 
   await themeController.load();
@@ -99,7 +105,6 @@ class _RootGateState extends State<_RootGate> {
       _shellEpoch++;
       _locked = false;
     });
-    // Re-check lock for the newly active shop (PIN is per-shop).
     _security.isLockEnabled().then((enabled) {
       if (!mounted) return;
       setState(() => _locked = enabled);
@@ -151,7 +156,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int selectedIndex = 0;
   int _unread = 0;
-  ProfileFeatures _features = ProfileFeatures.simpleCore;
+  ProfileFeatures _features = ProfileFeatures.mamaMboga;
   final _notifications = NotificationService();
   final _scanner = AlertScannerService();
   final _profiles = BusinessProfileService();
