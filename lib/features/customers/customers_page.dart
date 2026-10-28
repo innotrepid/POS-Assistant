@@ -108,9 +108,14 @@ class _CustomersPageState extends State<CustomersPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Customers')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addCustomer,
-        child: const Icon(Icons.person_add),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 72),
+        child: FloatingActionButton.extended(
+          onPressed: _addCustomer,
+          icon: const Icon(Icons.person_add),
+          label: const Text('Add customer'),
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -121,12 +126,13 @@ class _CustomersPageState extends State<CustomersPage> {
                       child: Padding(
                         padding: EdgeInsets.all(24),
                         child: Text(
-                          'No customers yet. Tap + to add people who buy on credit.',
+                          'No customers yet. Tap Add customer for people who buy on credit.',
                           textAlign: TextAlign.center,
                         ),
                       ),
                     )
                   : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 120),
                       itemCount: _customers.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, index) {
