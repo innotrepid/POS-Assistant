@@ -4,8 +4,9 @@ import 'debtor_service.dart';
 import 'inventory_service.dart';
 import 'notification_service.dart';
 import 'policy_service.dart';
+import 'system_notification_service.dart';
 
-/// Scans stock and debt; writes in-app notifications only (no system tray).
+/// Scans stock and debt; writes in-app notifications and Android/iOS tray alerts.
 class AlertScannerService {
   AlertScannerService({
     InventoryService? inventory,
@@ -54,67 +55,62 @@ class AlertScannerService {
           entityId: product.id,
           dedupeKey: outKey,
         );
-        if (isNew) created++;
+        if (isNew) {
+          created++;
+          await SystemNotificationService.instance.show(
+            id: product.id.hashCode & 0x7fffffff,
+            title: 'Out of stock',
+            body: '${product.name} has no stock left.',
+            category: 'inventory',
+            priority: 'critical',
+          );
+        }
         await _notifications.markReadByDedupeKey(lowKey);
       } else if (min > 0 && stock <= min) {
         final isNew = await _notifications.pushIfNew(
           category: 'inventory',
           priority: 'warning',
           title: 'Low stock',
-          body:
-              '${product.name}: $stock left (minimum ${_fmt(min)}).',
+          body: '${product.name}: $stock left (minimum ${_fmt(min)}).',
           deepLink: 'stock',
           entityType: 'product',
           entityId: product.id,
           dedupeKey: lowKey,
         );
-        if (isNew) created++;
+        if (isNew) {
+          created++;
+          await SystemNotificationService.instance.show(
+            id: (product.id.hashCode + 1) & 0x7fffffff,
+            title: 'Low stock',
+            body: '${product.name}: $stock left (minimum ${_fmt(min)}).',
+            category: 'inventory',
+            priority: 'warning',
+          );
+        }
         await _notifications.markReadByDedupeKey(outKey);
       } else {
         await _notifications.markReadByDedupeKey(outKey);
         await _notifications.markReadByDedupeKey(lowKey);
       }
     }
-
     return created;
   }
 
   Future<int> _scanDebt() async {
     var created = 0;
     final overdueDays = await _policy.getOverdueDebtDays();
-    final list = await _debtors.listOutstanding(limit: 50);
-    final db = await _database.database;
+    final list = await _debtors.listOutstanding(limit: 200, overdueDays: overdueDays);
 
     for (final d in list) {
-      if (d.balance <= 0.001) continue;
-
-      final open = await db.query(
-        'sales',
-        where:
-            "customer_id = ? AND balance > 0 AND sale_status = 'completed'",
-        whereArgs: [d.customerId],
-        orderBy: 'created_at ASC',
-        limit: 1,
-      );
-
-      var daysOpen = 0;
-      if (open.isNotEmpty) {
-        final createdAt =
-            DateTime.tryParse(open.first['created_at'] as String? ?? '');
-        if (createdAt != null) {
-          daysOpen = DateTime.now().difference(createdAt).inDays;
-        }
-      }
-
-      final isOverdue = daysOpen >= overdueDays;
+      if (d.balance <= 0) continue;
+      final daysOpen = d.daysOpen;
+      final isOverdue = overdueDays > 0 && daysOpen >= overdueDays;
       final key = isOverdue
           ? 'debt_overdue_${d.customerId}'
           : 'debt_outstanding_${d.customerId}';
 
       if (isOverdue) {
-        await _notifications.markReadByDedupeKey(
-          'debt_outstanding_${d.customerId}',
-        );
+        await _notifications.markReadByDedupeKey('debt_outstanding_${d.customerId}');
         final isNew = await _notifications.pushIfNew(
           category: 'debt',
           priority: 'warning',
@@ -127,11 +123,20 @@ class AlertScannerService {
           entityId: d.customerId,
           dedupeKey: key,
         );
-        if (isNew) created++;
+        if (isNew) {
+          created++;
+          await SystemNotificationService.instance.show(
+            id: d.customerId.hashCode & 0x7fffffff,
+            title: 'Overdue debt',
+            body:
+                '${d.customerName}: ${Money.format(d.balance)} '
+                'open for $daysOpen days (limit $overdueDays).',
+            category: 'debt',
+            priority: 'warning',
+          );
+        }
       } else {
-        await _notifications.markReadByDedupeKey(
-          'debt_overdue_${d.customerId}',
-        );
+        await _notifications.markReadByDedupeKey('debt_overdue_${d.customerId}');
         final isNew = await _notifications.pushIfNew(
           category: 'debt',
           priority: d.balance >= 5000 ? 'warning' : 'info',
@@ -142,10 +147,18 @@ class AlertScannerService {
           entityId: d.customerId,
           dedupeKey: key,
         );
-        if (isNew) created++;
+        if (isNew) {
+          created++;
+          await SystemNotificationService.instance.show(
+            id: (d.customerId.hashCode + 17) & 0x7fffffff,
+            title: 'Customer owes you',
+            body: '${d.customerName}: ${Money.format(d.balance)} outstanding.',
+            category: 'debt',
+            priority: d.balance >= 5000 ? 'warning' : 'info',
+          );
+        }
       }
     }
-
     return created;
   }
 
