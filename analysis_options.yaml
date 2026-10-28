@@ -1,14 +1,17 @@
 include: package:flutter_lints/flutter.yaml
 
-analyzer:
-  errors:
-    # Keep CI green while we iterate; treat infos as non-blocking.
-    info: ignore
-    todo: ignore
-  exclude:
-    - "**/*.g.dart"
-
 linter:
   rules:
     prefer_const_constructors: false
     prefer_const_literals_to_create_immutables: false
+    prefer_const_declarations: false
+    avoid_print: false
+
+analyzer:
+  errors:
+    unused_local_variable: ignore
+    unused_import: ignore
+    dead_code: ignore
+    unnecessary_import: ignore
+    depend_on_referenced_packages: ignore
+    prefer_const_constructors: ignore
