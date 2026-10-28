@@ -139,7 +139,7 @@ class _DashboardPageState extends State<DashboardPage> {
         category: category,
         amount: Money.parse(amountCtrl.text),
         paymentMethod: method,
-        notes: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+        description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
       );
       await _load();
     } catch (e) {
@@ -306,7 +306,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           for (final e in _todayExpenses)
                             ListTile(
                               title: Text('${e['category']}'),
-                              subtitle: Text('${e['notes'] ?? ''}'),
+                              subtitle: Text('${e['description'] ?? ''}'),
                               trailing: Text(Money.format((e['amount'] as num?)?.toDouble() ?? 0)),
                             ),
                         ],
