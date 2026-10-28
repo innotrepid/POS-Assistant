@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/inventory_service.dart';
@@ -46,6 +45,7 @@ class _InventoryPageState extends State<InventoryPage> {
       final profile = await _profiles.getProfile();
       final products = await _inventory.getAllProducts();
       final stock = <String, double>{};
+      // One pass — avoid N+1 if service supports bulk later
       for (final p in products) {
         stock[p.id] = await _inventory.getStock(p.id);
       }
@@ -205,7 +205,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Add stock · ${product.name}'),
+        title: Text('Bought today · ${product.name}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -249,8 +249,8 @@ class _InventoryPageState extends State<InventoryPage> {
         unitCost: costController.text.trim().isEmpty
             ? null
             : Money.parse(costController.text),
-        movementType: 'purchase_received',
-        reason: 'Manual stock in',
+        movementType: 'market_restock',
+        reason: 'Bought today',
       );
       await _load();
     } catch (e) {
@@ -274,7 +274,7 @@ class _InventoryPageState extends State<InventoryPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'manual'),
-            child: const Text('Manual'),
+            child: const Text('Bought today'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, 'supplier'),
@@ -294,10 +294,10 @@ class _InventoryPageState extends State<InventoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: const Text('Stock'),
         actions: [
           if (_suppliersEnabled)
@@ -326,40 +326,41 @@ class _InventoryPageState extends State<InventoryPage> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(
-                  child: GlassPanel(
-                    margin: const EdgeInsets.all(24),
-                    child: Text(_error!),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_error!, textAlign: TextAlign.center),
                   ),
                 )
               : _products.isEmpty
                   ? const Center(
                       child: Text('No products yet. Tap + to add.'),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 88),
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
                       itemCount: _products.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, index) {
                         final p = _products[index];
                         final qty = _stock[p.id] ?? 0;
                         final low =
                             p.minimumStock > 0 && qty <= p.minimumStock;
-                        return GlassPanel(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            title: Text(
-                              p.name,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                        return ListTile(
+                          title: Text(
+                            p.name,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            '${Money.format(p.sellingPrice)} · '
+                            '$qty ${p.unit}'
+                            '${low ? ' · LOW' : ''}',
+                            style: TextStyle(
+                              color: low ? scheme.error : null,
                             ),
-                            subtitle: Text(
-                              '${Money.format(p.sellingPrice)} · '
-                              '$qty ${p.unit}'
-                              '${low ? ' · LOW' : ''}',
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.add_box_outlined),
-                              tooltip: 'Add stock',
-                              onPressed: () => _addStockFlow(p),
-                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.add_box_outlined),
+                            tooltip: 'Bought today',
+                            onPressed: () => _addStockFlow(p),
                           ),
                         );
                       },
