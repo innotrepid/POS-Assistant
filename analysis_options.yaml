@@ -11,7 +11,11 @@ analyzer:
   errors:
     unused_local_variable: ignore
     unused_import: ignore
+    unused_field: ignore
+    unused_element: ignore
     dead_code: ignore
     unnecessary_import: ignore
     depend_on_referenced_packages: ignore
     prefer_const_constructors: ignore
+    deprecated_member_use: ignore
+    deprecated_member_use_from_same_package: ignore
