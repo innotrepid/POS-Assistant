@@ -11,11 +11,13 @@ import 'features/notifications/notifications_page.dart';
 import 'features/onboarding/onboarding_page.dart';
 import 'features/pos/pos_page.dart';
 import 'features/reports/reports_page.dart';
+import 'features/security/lock_screen.dart';
 import 'features/settings/settings_page.dart';
 import 'features/suppliers/suppliers_page.dart';
 import 'services/alert_scanner_service.dart';
 import 'services/business_profile_service.dart';
 import 'services/notification_service.dart';
+import 'services/security_service.dart';
 import 'services/system_notification_service.dart';
 import 'services/theme_service.dart';
 
@@ -68,8 +70,10 @@ class _RootGate extends StatefulWidget {
 
 class _RootGateState extends State<_RootGate> {
   final _profiles = BusinessProfileService.instance;
+  final _security = SecurityService();
   bool _loading = true;
   bool _needsOnboarding = false;
+  bool _needsUnlock = false;
 
   @override
   void initState() {
@@ -84,13 +88,17 @@ class _RootGateState extends State<_RootGate> {
       if (done) {
         final id = await _profiles.getProfileId();
         await AppDatabase.instance.useProfile(id);
+        final lockOn = await _security.isLockEnabled();
+        final hasPin = await _security.hasPin();
         setState(() {
           _needsOnboarding = false;
+          _needsUnlock = lockOn && hasPin;
           _loading = false;
         });
       } else {
         setState(() {
           _needsOnboarding = true;
+          _needsUnlock = false;
           _loading = false;
         });
       }
@@ -98,6 +106,7 @@ class _RootGateState extends State<_RootGate> {
       if (!mounted) return;
       setState(() {
         _needsOnboarding = true;
+        _needsUnlock = false;
         _loading = false;
       });
     }
@@ -110,7 +119,19 @@ class _RootGateState extends State<_RootGate> {
     }
     if (_needsOnboarding) {
       return OnboardingPage(
-        onCompleted: () => setState(() => _needsOnboarding = false),
+        onCompleted: () {
+          setState(() {
+            _needsOnboarding = false;
+            _needsUnlock = false;
+          });
+        },
+      );
+    }
+    if (_needsUnlock) {
+      return LockScreen(
+        onUnlocked: () {
+          setState(() => _needsUnlock = false);
+        },
       );
     }
     return const AppShell();
@@ -167,49 +188,40 @@ class _AppShellState extends State<AppShell> {
 
   Future<void> _bootstrap() async {
     try {
-      final p = await _profiles.getProfile();
-      final gen = AppDatabase.instance.generation;
-      if (mounted) {
-        setState(() {
-          _features = p.features;
-          _profileId = p.id.name;
-          _dbGeneration = gen;
-          selectedIndex = 0;
-        });
-      }
-    } catch (_) {}
-    try {
+      final profile = await _profiles.getProfile();
+      final unread = await _notifications.unreadCount();
       await _scanner.scan();
+      final unread2 = await _notifications.unreadCount();
+      if (!mounted) return;
+      setState(() {
+        _features = profile.features;
+        _profileId = profile.id.name;
+        _dbGeneration++;
+        _unread = unread2 > 0 ? unread2 : unread;
+        selectedIndex = 0;
+      });
     } catch (_) {}
-    await _refreshUnread();
   }
 
-  Future<void> _refreshUnread() async {
-    try {
-      final c = await _notifications.unreadCount();
-      if (mounted) setState(() => _unread = c);
-    } catch (_) {}
+  void _openNotifications() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const NotificationsPage()),
+    ).then((_) async {
+      final n = await _notifications.unreadCount();
+      if (mounted) setState(() => _unread = n);
+    });
   }
 
   void _openSettings() {
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
-        )
-        .then((_) => _onProfileChanged());
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
+    ).then((_) => _bootstrap());
   }
 
   void _openAssistant() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const AssistantPage()),
     );
-  }
-
-  Future<void> _openNotifications() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const NotificationsPage()),
-    );
-    _refreshUnread();
   }
 
   List<_NavItem> _items() {
@@ -221,28 +233,24 @@ class _AppShellState extends State<AppShell> {
           onOpenNotifications: _openNotifications,
           onOpenAssistant: _openAssistant,
           onOpenSettings: _openSettings,
+          onRefreshShell: _bootstrap,
         ),
         destination: const NavigationDestination(
-          icon: Icon(Icons.dashboard_outlined),
-          selectedIcon: Icon(Icons.dashboard),
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home),
           label: 'Home',
         ),
         visible: (_) => true,
       ),
       _NavItem(
         id: 'pos',
-        page: PosPage(
-          onSaleCompleted: _bootstrap,
-          onOpenAssistant: _openAssistant,
-          onOpenNotifications: _openNotifications,
-          unreadCount: _unread,
-        ),
+        page: const PosPage(),
         destination: const NavigationDestination(
           icon: Icon(Icons.point_of_sale_outlined),
           selectedIcon: Icon(Icons.point_of_sale),
-          label: 'POS',
+          label: 'Sell',
         ),
-        visible: (f) => f.sales,
+        visible: (f) => f.pos,
       ),
       _NavItem(
         id: 'stock',
@@ -313,11 +321,14 @@ class _AppShellState extends State<AppShell> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: showAssistantFab
-          ? FloatingActionButton(
-              heroTag: 'assistant_fab',
-              onPressed: _openAssistant,
-              tooltip: 'Assistant',
-              child: const Icon(Icons.auto_awesome),
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 72),
+              child: FloatingActionButton(
+                heroTag: 'assistant_fab',
+                onPressed: _openAssistant,
+                tooltip: 'Assistant',
+                child: const Icon(Icons.auto_awesome),
+              ),
             )
           : null,
       bottomNavigationBar: visible.isEmpty
