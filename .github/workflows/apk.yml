@@ -34,8 +34,9 @@ jobs:
       - name: Generate Android platform
         run: flutter create . --project-name mercate --org com.aetherion --platforms=android
 
-      - name: Configure package id and label
+      - name: Configure package id, label, desugaring
         run: |
+          set -e
           for f in android/app/build.gradle android/app/build.gradle.kts; do
             [ -f "$f" ] || continue
             sed -i 's/applicationId *= *".*"/applicationId = "com.aetherion.mercate"/' "$f" || true
@@ -43,10 +44,60 @@ jobs:
             sed -i 's/namespace *= *".*"/namespace = "com.aetherion.mercate"/' "$f" || true
             sed -i "s/namespace \".*\"/namespace \"com.aetherion.mercate\"/" "$f" || true
           done
+
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
             sed -i 's/android:label="[^"]*"/android:label="Mercate"/' android/app/src/main/AndroidManifest.xml
             grep -q POST_NOTIFICATIONS android/app/src/main/AndroidManifest.xml || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
             grep -q USE_BIOMETRIC android/app/src/main/AndroidManifest.xml || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' android/app/src/main/AndroidManifest.xml
+          fi
+
+          # flutter_local_notifications requires core library desugaring
+          if [ -f android/app/build.gradle.kts ]; then
+            python3 << 'PY'
+from pathlib import Path
+p = Path("android/app/build.gradle.kts")
+t = p.read_text()
+if "isCoreLibraryDesugaringEnabled" not in t:
+    t = t.replace(
+        "compileOptions {",
+        "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
+        1,
+    )
+if "desugar_jdk_libs" not in t:
+    if "dependencies {" in t:
+        t = t.replace(
+            "dependencies {",
+            'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")',
+            1,
+        )
+    else:
+        t += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+p.write_text(t)
+print("desugaring enabled (kts)")
+PY
+          elif [ -f android/app/build.gradle ]; then
+            python3 << 'PY'
+from pathlib import Path
+p = Path("android/app/build.gradle")
+t = p.read_text()
+if "coreLibraryDesugaringEnabled" not in t:
+    t = t.replace(
+        "compileOptions {",
+        "compileOptions {\n        coreLibraryDesugaringEnabled true",
+        1,
+    )
+if "desugar_jdk_libs" not in t:
+    if "dependencies {" in t:
+        t = t.replace(
+            "dependencies {",
+            "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'",
+            1,
+        )
+    else:
+        t += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
+p.write_text(t)
+print("desugaring enabled (gradle)")
+PY
           fi
 
       - run: flutter pub get
