@@ -20,12 +20,18 @@ dependencies:
   local_auth: ^2.3.0
   crypto: ^3.0.6
   url_launcher: ^6.3.1
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
   sqflite_common_ffi: ^2.3.4+4
+
+# Mobile-first; avoid analyzing for web (dart:io / plugins).
+platforms:
+  android:
+  ios:
 
 flutter:
   uses-material-design: true
