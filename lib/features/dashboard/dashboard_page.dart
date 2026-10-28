@@ -134,7 +134,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: category,
+                      initialValue: category,
                       items: kExpenseCategories
                           .map(
                             (c) => DropdownMenuItem(
@@ -376,13 +376,6 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'expense_fab',
-        onPressed: _addExpense,
-        icon: const Icon(Icons.remove_circle_outline),
-        label: const Text('Expense'),
-      ),
       body: _buildBody(),
     );
   }
@@ -413,7 +406,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final topPad = MediaQuery.of(context).padding.top + kToolbarHeight - 8;
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, topPad, 16, 100),
+      padding: EdgeInsets.fromLTRB(16, topPad, 16, 32),
       children: [
         Text(
           _greeting,
@@ -586,12 +579,8 @@ class _DashboardPageState extends State<DashboardPage> {
                       Text(
                         '${_spoilage.eventCount} record'
                         '${_spoilage.eventCount == 1 ? '' : 's'} · '
-                        'est. cost ${Money.format(_spoilage.estimatedCost)}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
+                        '${Money.format(_spoilage.estimatedCostLoss)} est. loss',
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
@@ -644,30 +633,51 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 22),
 
-        Text(
-          "Today's expenses",
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+        GlassPanel(
+          borderRadius: 22,
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      "Today's expenses",
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _addExpense,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Record'),
+                  ),
+                ],
               ),
+              const SizedBox(height: 4),
+              if (_todayExpenses.isEmpty)
+                Text(
+                  'No expenses recorded today.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                )
+              else
+                for (final e in _todayExpenses.take(8))
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(e['category'] as String? ?? 'Expense'),
+                    subtitle: Text(e['description'] as String? ?? ''),
+                    trailing: Text(
+                      Money.format((e['amount'] as num?)?.toDouble() ?? 0),
+                    ),
+                  ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
-        if (_todayExpenses.isEmpty)
-          Text(
-            'No expenses recorded today.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          )
-        else
-          for (final e in _todayExpenses.take(8))
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(e['category'] as String? ?? 'Expense'),
-              subtitle: Text(e['description'] as String? ?? ''),
-              trailing: Text(
-                Money.format((e['amount'] as num?)?.toDouble() ?? 0),
-              ),
-            ),
       ],
     );
   }
