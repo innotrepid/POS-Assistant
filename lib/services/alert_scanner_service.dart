@@ -4,8 +4,9 @@ import 'debtor_service.dart';
 import 'inventory_service.dart';
 import 'notification_service.dart';
 import 'policy_service.dart';
+import 'system_notification_service.dart';
 
-/// Scans stock and debt; writes in-app notifications only (no system tray).
+/// Scans stock and debt; writes in-app notifications and system tray alerts.
 class AlertScannerService {
   AlertScannerService({
     InventoryService? inventory,
@@ -13,23 +14,47 @@ class AlertScannerService {
     NotificationService? notifications,
     PolicyService? policy,
     AppDatabase? database,
+    SystemNotificationService? systemNotifications,
   })  : _inventory = inventory ?? InventoryService(),
         _debtors = debtors ?? DebtorService(),
         _notifications = notifications ?? NotificationService(),
         _policy = policy ?? PolicyService(),
-        _database = database ?? AppDatabase.instance;
+        _database = database ?? AppDatabase.instance,
+        _system = systemNotifications ?? SystemNotificationService.instance;
 
   final InventoryService _inventory;
   final DebtorService _debtors;
   final NotificationService _notifications;
   final PolicyService _policy;
   final AppDatabase _database;
+  final SystemNotificationService _system;
 
   Future<int> scan() async {
+    // Ensure channels + permission (no-op if already granted).
+    await _system.init(requestPermission: true);
+
     var created = 0;
     created += await _scanStock();
     created += await _scanDebt();
     return created;
+  }
+
+  Future<void> _tray({
+    required String dedupeKey,
+    required String title,
+    required String body,
+    required String category,
+    required String priority,
+  }) async {
+    // Stable int id from dedupe key so updates replace prior tray alerts.
+    final id = dedupeKey.hashCode & 0x7fffffff;
+    await _system.show(
+      id: id,
+      title: title,
+      body: body,
+      category: category,
+      priority: priority,
+    );
   }
 
   Future<int> _scanStock() async {
@@ -44,31 +69,53 @@ class AlertScannerService {
       final lowKey = 'stock_low_${product.id}';
 
       if (stock <= 0) {
+        final title = 'Out of stock';
+        final body = '${product.name} has no stock left.';
         final isNew = await _notifications.pushIfNew(
           category: 'inventory',
           priority: 'critical',
-          title: 'Out of stock',
-          body: '${product.name} has no stock left.',
+          title: title,
+          body: body,
           deepLink: 'stock',
           entityType: 'product',
           entityId: product.id,
           dedupeKey: outKey,
         );
-        if (isNew) created++;
+        if (isNew) {
+          created++;
+          await _tray(
+            dedupeKey: outKey,
+            title: title,
+            body: body,
+            category: 'inventory',
+            priority: 'critical',
+          );
+        }
         await _notifications.markReadByDedupeKey(lowKey);
       } else if (min > 0 && stock <= min) {
+        final title = 'Low stock';
+        final body =
+            '${product.name}: $stock left (minimum ${_fmt(min)}).';
         final isNew = await _notifications.pushIfNew(
           category: 'inventory',
           priority: 'warning',
-          title: 'Low stock',
-          body:
-              '${product.name}: $stock left (minimum ${_fmt(min)}).',
+          title: title,
+          body: body,
           deepLink: 'stock',
           entityType: 'product',
           entityId: product.id,
           dedupeKey: lowKey,
         );
-        if (isNew) created++;
+        if (isNew) {
+          created++;
+          await _tray(
+            dedupeKey: lowKey,
+            title: title,
+            body: body,
+            category: 'inventory',
+            priority: 'warning',
+          );
+        }
         await _notifications.markReadByDedupeKey(outKey);
       } else {
         await _notifications.markReadByDedupeKey(outKey);
@@ -115,34 +162,58 @@ class AlertScannerService {
         await _notifications.markReadByDedupeKey(
           'debt_outstanding_${d.customerId}',
         );
+        final title = 'Overdue deni';
+        final body =
+            '${d.customerName}: ${Money.format(d.balance)} '
+            'open for $daysOpen days (limit $overdueDays).';
         final isNew = await _notifications.pushIfNew(
           category: 'debt',
           priority: 'warning',
-          title: 'Overdue debt',
-          body:
-              '${d.customerName}: ${Money.format(d.balance)} '
-              'open for $daysOpen days (limit $overdueDays).',
+          title: title,
+          body: body,
           deepLink: 'customers',
           entityType: 'customer',
           entityId: d.customerId,
           dedupeKey: key,
         );
-        if (isNew) created++;
+        if (isNew) {
+          created++;
+          await _tray(
+            dedupeKey: key,
+            title: title,
+            body: body,
+            category: 'debt',
+            priority: 'warning',
+          );
+        }
       } else {
         await _notifications.markReadByDedupeKey(
           'debt_overdue_${d.customerId}',
         );
+        final title = 'Customer owes you';
+        final body =
+            '${d.customerName}: ${Money.format(d.balance)} outstanding.';
+        final priority = d.balance >= 5000 ? 'warning' : 'info';
         final isNew = await _notifications.pushIfNew(
           category: 'debt',
-          priority: d.balance >= 5000 ? 'warning' : 'info',
-          title: 'Customer owes you',
-          body: '${d.customerName}: ${Money.format(d.balance)} outstanding.',
+          priority: priority,
+          title: title,
+          body: body,
           deepLink: 'customers',
           entityType: 'customer',
           entityId: d.customerId,
           dedupeKey: key,
         );
-        if (isNew) created++;
+        if (isNew) {
+          created++;
+          await _tray(
+            dedupeKey: key,
+            title: title,
+            body: body,
+            category: 'debt',
+            priority: priority,
+          );
+        }
       }
     }
 
