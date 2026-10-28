@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
@@ -69,7 +67,6 @@ class ShopService {
     await _registry.upsertShop(shop);
     await switchToShop(shop.id);
 
-    // Seed shop name into the shop's own settings for dashboard display.
     try {
       final db = await _database.database;
       await db.insert(
@@ -89,7 +86,6 @@ class ShopService {
     }
     await _registry.renameShop(id, trimmed);
 
-    // Keep in-shop business_name in sync when renaming the active shop.
     if (_database.shopId == id) {
       try {
         final db = await _database.database;
@@ -133,13 +129,11 @@ class ShopService {
       await _database.close();
     }
 
-    // Remove data file.
+    // sqflite deleteDatabase works without dart:io (CI / multi-platform safe).
     try {
       final dir = await getDatabasesPath();
-      final file = File(join(dir, target.dbFileName));
-      if (await file.exists()) {
-        await file.delete();
-      }
+      final path = join(dir, target.dbFileName);
+      await deleteDatabase(path);
     } catch (_) {}
 
     await _registry.deleteShop(shopId);
@@ -163,15 +157,19 @@ class ShopService {
       join(dir, 'pos_assistant.db'),
     ];
 
-    File? legacy;
+    String? legacyPath;
     for (final path in candidates) {
-      final f = File(path);
-      if (await f.exists()) {
-        legacy = f;
+      // Probe without dart:io: try opening read-only; if missing, open fails.
+      try {
+        final probe = await openDatabase(path, readOnly: true, singleInstance: false);
+        await probe.close();
+        legacyPath = path;
         break;
+      } catch (_) {
+        // File does not exist or is unreadable.
       }
     }
-    if (legacy == null) return;
+    if (legacyPath == null) return;
 
     final shop = Shop(
       id: _uuid.v4(),
@@ -180,13 +178,43 @@ class ShopService {
       lastOpenedAt: DateTime.now(),
     );
 
-    final dest = File(join(dir, shop.dbFileName));
+    final destPath = join(dir, shop.dbFileName);
+
+    // Prefer rename via delete+leave content: open legacy, copy with backup API.
+    // sqflite has no rename; use databaseFactory if available.
     try {
-      if (!await dest.exists()) {
-        await legacy.rename(dest.path);
+      // If dest already exists, skip migration.
+      try {
+        final destProbe =
+            await openDatabase(destPath, readOnly: true, singleInstance: false);
+        await destProbe.close();
+        // Dest exists — register shop pointing at it without touching legacy.
+        await _registry.upsertShop(shop);
+        await _registry.setActiveShopId(shop.id);
+        return;
+      } catch (_) {
+        // Dest missing — continue.
       }
+
+      // Copy by opening source and using VACUUM INTO when supported, else
+      // fall through: register shop and open legacy path once by renaming
+      // via getDatabasesPath + deleteDatabase after manual path swap is hard
+      // without dart:io. Register shop; user data stays in legacy until
+      // next open maps by id. Safer: leave registry + openForShop creates
+      // empty file — BAD for migration.
+      //
+      // Practical approach without dart:io: open legacy with write access
+      // and run `VACUUM INTO 'dest'` (SQLite 3.27+).
+      final src = await openDatabase(legacyPath, singleInstance: false);
+      try {
+        await src.execute('VACUUM INTO ?', [destPath]);
+      } catch (_) {
+        // VACUUM INTO unsupported — abandon silent migration (create empty shop).
+        await src.close();
+        return;
+      }
+      await src.close();
     } catch (_) {
-      // If rename fails, leave legacy in place; createShop path still works.
       return;
     }
 
