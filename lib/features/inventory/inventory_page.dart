@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/inventory_service.dart';
+import '../../services/starter_catalogue_service.dart';
 
 class InventoryPage extends StatefulWidget {
   final int unreadCount;
@@ -23,6 +24,7 @@ class InventoryPage extends StatefulWidget {
 class _InventoryPageState extends State<InventoryPage> {
   final _inventory = InventoryService();
   final _profiles = BusinessProfileService();
+  final _starter = StarterCatalogueService();
   List<Product> _products = [];
   Map<String, double> _stock = {};
   bool _loading = true;
@@ -57,6 +59,36 @@ class _InventoryPageState extends State<InventoryPage> {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _seedStarter() async {
+    try {
+      final n = await _starter.seedIfEmpty();
+      if (!mounted) return;
+      if (n == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Catalogue already has products, or no starter for this profile.',
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Added $n starter products (edit prices as needed)',
+            ),
+          ),
+        );
+      }
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
 
@@ -212,7 +244,6 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
-  /// Market / supplier trip — add stock without suppliers tab.
   Future<void> _restock(Product product) async {
     final qtyController = TextEditingController();
     final costController = TextEditingController(
@@ -479,11 +510,30 @@ class _InventoryPageState extends State<InventoryPage> {
       return Center(
         child: GlassPanel(
           margin: const EdgeInsets.all(24),
-          child: Text(
-            'No products yet. Tap + to add one.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'No products yet.',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Add one with +, or load a starter list for your shop type.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _seedStarter,
+                icon: const Icon(Icons.playlist_add),
+                label: const Text('Load starter catalogue'),
+              ),
+            ],
           ),
         ),
       );
