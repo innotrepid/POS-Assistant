@@ -16,6 +16,7 @@ import 'features/suppliers/suppliers_page.dart';
 import 'services/alert_scanner_service.dart';
 import 'services/business_profile_service.dart';
 import 'services/notification_service.dart';
+import 'services/system_notification_service.dart';
 import 'services/theme_service.dart';
 
 final themeController = ThemeController();
@@ -31,6 +32,9 @@ Future<void> main() async {
     }
   } catch (_) {}
   await themeController.load();
+  try {
+    await SystemNotificationService.instance.init();
+  } catch (_) {}
   runApp(const MercateApp());
 }
 
@@ -300,8 +304,6 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       extendBody: true,
       body: GlassScaffoldBody(
-        // Force full page rebuild when profile/DB switches — prevents stale State
-        // showing products from another profile.
         child: KeyedSubtree(
           key: ValueKey('profile-$_profileId-$_dbGeneration'),
           child: visible.isEmpty
