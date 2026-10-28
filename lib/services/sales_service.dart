@@ -54,9 +54,10 @@ class SalesService {
     AppDatabase? database,
     Uuid? uuid,
     PolicyService? policy,
-  }) : _database = database ?? AppDatabase.instance,
-       _uuid = uuid ?? const Uuid(),
-       _policy = policy ?? PolicyService();
+  })  : _database = database ?? AppDatabase.instance,
+        _uuid = uuid ?? const Uuid(),
+        _policy = policy ??
+            PolicyService(database: database ?? AppDatabase.instance);
 
   final AppDatabase _database;
   final Uuid _uuid;
@@ -410,12 +411,6 @@ class SalesService {
   }
 
   /// Full void/refund of a completed sale.
-  ///
-  /// - Idempotent: already voided/refunded → StateError
-  /// - Restores stock for catalogue lines once
-  /// - Reverses remaining sale debt on the debtor ledger
-  /// - Writes a refund payment (negative amount) using preferred method
-  /// - Does not rewrite historical line prices
   Future<SaleVoidResult> voidSale({
     required String saleId,
     required String reason,
@@ -447,7 +442,6 @@ class SalesService {
       throw StateError('Only completed sales can be voided (status: $status).');
     }
 
-    // Guard: stock already restored for this sale?
     final priorRefund = await db.query(
       'stock_movements',
       where: "reference_id = ? AND movement_type = 'sale_refund'",
@@ -491,7 +485,6 @@ class SalesService {
     var stockRestored = false;
 
     await db.transaction((txn) async {
-      // Restore stock for catalogue items
       for (final item in items) {
         final productId = item['product_id'] as String?;
         if (productId == null || productId.isEmpty) continue;
@@ -514,7 +507,6 @@ class SalesService {
         stockRestored = true;
       }
 
-      // Reverse remaining debt on this sale
       if (balance > 0 && customerId != null) {
         await txn.insert('debtor_transactions', {
           'id': _uuid.v4(),
@@ -527,7 +519,6 @@ class SalesService {
         });
       }
 
-      // Refund of amount previously paid (money back to customer)
       if (paid > 0) {
         await txn.insert('payments', {
           'id': _uuid.v4(),
@@ -575,7 +566,6 @@ class SalesService {
     );
   }
 
-  /// True when refunded amount meets/exceeds configured large-refund threshold.
   Future<bool> isLargeRefund(double amount) async {
     final threshold = await _policy.getLargeRefundAmount();
     return Money.round(amount) >= threshold;
@@ -650,16 +640,16 @@ class SalesService {
     required double paid,
     required double balance,
   }) {
-    if (balance == 0) return 'paid';
-    if (paid > 0) return 'partially_paid';
-    return 'unpaid';
+    if (balance <= 0) return 'paid';
+    if (paid <= 0) return 'unpaid';
+    return 'partial';
   }
 
   String _formatNumber(double value) {
     if (value == value.truncateToDouble()) {
       return value.toInt().toString();
     }
-    return value.toString();
+    return value.toStringAsFixed(2);
   }
 }
 
@@ -682,5 +672,5 @@ class SaleLineInput {
     this.isQuickSale = false,
   });
 
-  double get total => Money.round((quantity * unitPrice) - discount);
+  double get total => Money.round(quantity * unitPrice - discount);
 }
