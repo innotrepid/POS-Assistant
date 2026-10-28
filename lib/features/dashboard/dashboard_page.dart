@@ -7,9 +7,7 @@ import '../../services/business_profile_service.dart';
 import '../../services/day_closing_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/inventory_service.dart';
-import '../../services/security_service.dart';
 import '../pos/sales_history_page.dart';
-import '../security/lock_screen.dart';
 
 class DashboardPage extends StatefulWidget {
   final int unreadCount;
@@ -34,7 +32,6 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   final _expenses = ExpenseService();
   final _dayClose = DayClosingService();
-  final _security = SecurityService();
   final _inventory = InventoryService();
   final _profiles = BusinessProfileService.instance;
 
