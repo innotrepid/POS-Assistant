@@ -51,53 +51,31 @@ jobs:
             grep -q USE_BIOMETRIC android/app/src/main/AndroidManifest.xml || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' android/app/src/main/AndroidManifest.xml
           fi
 
-          # flutter_local_notifications requires core library desugaring
+          # Enable core library desugaring (required by flutter_local_notifications)
           if [ -f android/app/build.gradle.kts ]; then
-            python3 << 'PY'
-from pathlib import Path
-p = Path("android/app/build.gradle.kts")
-t = p.read_text()
-if "isCoreLibraryDesugaringEnabled" not in t:
-    t = t.replace(
-        "compileOptions {",
-        "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
-        1,
-    )
-if "desugar_jdk_libs" not in t:
-    if "dependencies {" in t:
-        t = t.replace(
-            "dependencies {",
-            'dependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")',
-            1,
-        )
-    else:
-        t += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
-p.write_text(t)
-print("desugaring enabled (kts)")
-PY
+            if ! grep -q isCoreLibraryDesugaringEnabled android/app/build.gradle.kts; then
+              sed -i '/compileOptions {/a\        isCoreLibraryDesugaringEnabled = true' android/app/build.gradle.kts
+            fi
+            if ! grep -q desugar_jdk_libs android/app/build.gradle.kts; then
+              if grep -q 'dependencies {' android/app/build.gradle.kts; then
+                sed -i '/dependencies {/a\    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' android/app/build.gradle.kts
+              else
+                printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> android/app/build.gradle.kts
+              fi
+            fi
+            echo "--- app/build.gradle.kts (snippet) ---"
+            grep -n -E 'desugar|compileOptions|isCoreLibrary' android/app/build.gradle.kts || true
           elif [ -f android/app/build.gradle ]; then
-            python3 << 'PY'
-from pathlib import Path
-p = Path("android/app/build.gradle")
-t = p.read_text()
-if "coreLibraryDesugaringEnabled" not in t:
-    t = t.replace(
-        "compileOptions {",
-        "compileOptions {\n        coreLibraryDesugaringEnabled true",
-        1,
-    )
-if "desugar_jdk_libs" not in t:
-    if "dependencies {" in t:
-        t = t.replace(
-            "dependencies {",
-            "dependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'",
-            1,
-        )
-    else:
-        t += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
-p.write_text(t)
-print("desugaring enabled (gradle)")
-PY
+            if ! grep -q coreLibraryDesugaringEnabled android/app/build.gradle; then
+              sed -i '/compileOptions {/a\        coreLibraryDesugaringEnabled true' android/app/build.gradle
+            fi
+            if ! grep -q desugar_jdk_libs android/app/build.gradle; then
+              if grep -q 'dependencies {' android/app/build.gradle; then
+                sed -i "/dependencies {/a\    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'" android/app/build.gradle
+              else
+                printf "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n" >> android/app/build.gradle
+              fi
+            fi
           fi
 
       - run: flutter pub get
