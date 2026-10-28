@@ -51,7 +51,6 @@ jobs:
             grep -q USE_BIOMETRIC android/app/src/main/AndroidManifest.xml || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' android/app/src/main/AndroidManifest.xml
           fi
 
-          # Enable core library desugaring (required by flutter_local_notifications)
           if [ -f android/app/build.gradle.kts ]; then
             if ! grep -q isCoreLibraryDesugaringEnabled android/app/build.gradle.kts; then
               sed -i '/compileOptions {/a\        isCoreLibraryDesugaringEnabled = true' android/app/build.gradle.kts
@@ -63,8 +62,6 @@ jobs:
                 printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> android/app/build.gradle.kts
               fi
             fi
-            echo "--- app/build.gradle.kts (snippet) ---"
-            grep -n -E 'desugar|compileOptions|isCoreLibrary' android/app/build.gradle.kts || true
           elif [ -f android/app/build.gradle ]; then
             if ! grep -q coreLibraryDesugaringEnabled android/app/build.gradle; then
               sed -i '/compileOptions {/a\        coreLibraryDesugaringEnabled true' android/app/build.gradle
@@ -77,6 +74,72 @@ jobs:
               fi
             fi
           fi
+
+      - name: Install Mercate launcher icons
+        run: |
+          set -e
+          pip install pillow -q
+          LOGO="assets/images/Mercate Logo.png"
+          if [ ! -f "$LOGO" ]; then
+            echo "ERROR: Mercate logo not found at $LOGO"
+            ls -la assets/images/ || true
+            exit 1
+          fi
+          # Write icon script to a file (keeps workflow YAML valid)
+          cat > /tmp/make_icons.py << 'EOF'
+          from pathlib import Path
+          from PIL import Image
+
+          logo_path = Path("assets/images/Mercate Logo.png")
+          img = Image.open(logo_path).convert("RGBA")
+
+          # Fit logo on square transparent canvas with small padding
+          def make_icon(size: int) -> Image.Image:
+              canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+              pad = max(1, size // 10)
+              target = size - pad * 2
+              copy = img.copy()
+              copy.thumbnail((target, target), Image.Resampling.LANCZOS)
+              x = (size - copy.width) // 2
+              y = (size - copy.height) // 2
+              canvas.paste(copy, (x, y), copy)
+              return canvas
+
+          sizes = {
+              "mipmap-mdpi": 48,
+              "mipmap-hdpi": 72,
+              "mipmap-xhdpi": 96,
+              "mipmap-xxhdpi": 144,
+              "mipmap-xxxhdpi": 192,
+          }
+          res = Path("android/app/src/main/res")
+          for folder, size in sizes.items():
+              out_dir = res / folder
+              out_dir.mkdir(parents=True, exist_ok=True)
+              icon = make_icon(size)
+              icon.save(out_dir / "ic_launcher.png")
+              icon.save(out_dir / "ic_launcher_round.png")
+              # Adaptive icon layers (API 26+)
+              icon.save(out_dir / "ic_launcher_foreground.png")
+
+          # Point adaptive icon XML at our foreground if present
+          anydpi = res / "mipmap-anydpi-v26"
+          if anydpi.is_dir():
+              for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
+                  xml = anydpi / name
+                  if xml.exists():
+                      text = xml.read_text()
+                      text = text.replace("@drawable/ic_launcher_foreground", "@mipmap/ic_launcher_foreground")
+                      text = text.replace("@mipmap/ic_launcher_foreground", "@mipmap/ic_launcher_foreground")
+                      xml.write_text(text)
+
+          print("Mercate launcher icons installed")
+          EOF
+          # Remove leading indent from heredoc body for Python
+          sed -i 's/^          //' /tmp/make_icons.py
+          python3 /tmp/make_icons.py
+          echo "Icons:"
+          find android/app/src/main/res -name 'ic_launcher*.png' | head -20
 
       - run: flutter pub get
 
