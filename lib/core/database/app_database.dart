@@ -1,8 +1,11 @@
-import 'dart:io';
-
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
+/// Per-shop SQLite database.
+///
+/// On disk: `mercate_<safeShopId>.db`.
+/// Use [AppDatabase.instance] after [ShopService.ensureActiveShop] has run.
+/// Tests use [AppDatabase.memory].
 class AppDatabase {
   AppDatabase._();
 
@@ -16,21 +19,50 @@ class AppDatabase {
 
   Database? _database;
   bool _useMemory = false;
+  String? _shopId;
+  String? _shopSafeId;
 
-  /// Canonical on-disk name (product is Mercate).
-  static const String dbFileName = 'mercate.db';
-
-  /// Legacy name from earlier POS-Assistant branding.
-  static const String legacyDbFileName = 'pos_assistant.db';
+  /// Current shop id (null until opened for a shop or memory mode).
+  String? get shopId => _shopId;
 
   /// Current schema version. Bump only when structure changes.
   static const int schemaVersion = 6;
 
+  /// Build on-disk path fragment from a shop id.
+  static String safeIdFor(String shopId) =>
+      shopId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+
+  static String fileNameForShop(String shopId) =>
+      'mercate_${safeIdFor(shopId)}.db';
+
   Future<Database> get database async {
-    if (_database != null) {
+    if (_database != null) return _database!;
+    if (!_useMemory && (_shopId == null || _shopSafeId == null)) {
+      throw StateError(
+        'AppDatabase has no active shop. '
+        'Call ShopService.ensureActiveShop() before accessing data.',
+      );
+    }
+    _database = await _openDatabase();
+    return _database!;
+  }
+
+  /// Bind this singleton to [shopId] and open (or reopen) its file.
+  Future<Database> openForShop(String shopId) async {
+    if (_useMemory) {
+      _shopId = shopId;
+      _shopSafeId = safeIdFor(shopId);
+      return database;
+    }
+
+    final safe = safeIdFor(shopId);
+    if (_database != null && _shopId == shopId) {
       return _database!;
     }
 
+    await close();
+    _shopId = shopId;
+    _shopSafeId = safe;
     _database = await _openDatabase();
     return _database!;
   }
@@ -45,11 +77,13 @@ class AppDatabase {
       );
     }
 
-    final databasesPath = await getDatabasesPath();
-    final path = join(databasesPath, dbFileName);
+    final safe = _shopSafeId;
+    if (safe == null || safe.isEmpty) {
+      throw StateError('Cannot open shop database without a safe shop id.');
+    }
 
-    // One-time migration: keep user data when renaming from the old file.
-    await _migrateLegacyFileIfNeeded(databasesPath, path);
+    final databasesPath = await getDatabasesPath();
+    final path = join(databasesPath, 'mercate_$safe.db');
 
     return openDatabase(
       path,
@@ -57,25 +91,6 @@ class AppDatabase {
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
-  }
-
-  /// If [mercate.db] is missing but [pos_assistant.db] exists, rename it.
-  Future<void> _migrateLegacyFileIfNeeded(
-    String databasesPath,
-    String newPath,
-  ) async {
-    try {
-      final newFile = File(newPath);
-      if (await newFile.exists()) return;
-
-      final legacyPath = join(databasesPath, legacyDbFileName);
-      final legacyFile = File(legacyPath);
-      if (!await legacyFile.exists()) return;
-
-      await legacyFile.rename(newPath);
-    } catch (_) {
-      // Non-fatal: fall through and let openDatabase create a fresh DB.
-    }
   }
 
   Future<void> _createDatabase(Database db, int version) async {
@@ -406,14 +421,11 @@ class AppDatabase {
         'REAL NOT NULL DEFAULT 0',
       );
     }
-    // v6: filename rename is file-level (see _migrateLegacyFileIfNeeded).
-    // Re-assert indexes so upgrades from any older version stay consistent.
     if (oldVersion < 6) {
       await _ensureIndexes(db);
     }
   }
 
-  /// Idempotent index creation (safe on create and on every upgrade path).
   Future<void> _ensureIndexes(Database db) async {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode)',
@@ -449,7 +461,6 @@ class AppDatabase {
     );
   }
 
-  /// SQLite has no ADD COLUMN IF NOT EXISTS; ignore duplicate-column errors.
   Future<void> _addColumnIfMissing(
     Database db,
     String table,
@@ -458,9 +469,7 @@ class AppDatabase {
   ) async {
     try {
       await db.execute('ALTER TABLE $table ADD COLUMN $column $typeAndDefault');
-    } catch (_) {
-      // Column already present (re-run or partial prior upgrade).
-    }
+    } catch (_) {}
   }
 
   Future<void> close() async {
