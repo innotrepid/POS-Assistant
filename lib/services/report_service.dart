@@ -47,8 +47,7 @@ class StockRow {
     required this.sellingPrice,
   });
 
-  double get stockValue =>
-      Money.round(quantity * (costPrice ?? 0));
+  double get stockValue => Money.round(quantity * (costPrice ?? 0));
 }
 
 class PartyBalanceRow {
@@ -94,7 +93,7 @@ class ReportService {
       '''
       SELECT payment_type, COALESCE(SUM(amount), 0) AS total
       FROM payments
-      WHERE sale_id IS NOT NULL
+      WHERE amount > 0
         AND created_at >= ? AND created_at < ?
       GROUP BY payment_type
       ''',
@@ -165,30 +164,60 @@ class ReportService {
     );
   }
 
+  /// Products sold on [day] with quantities — for short PDF reports.
+  Future<List<StockRow>> itemsSoldOnDay([DateTime? day]) async {
+    final d = day ?? DateTime.now();
+    final range = DayRange.of(d);
+    final db = await _database.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT
+        COALESCE(si.product_id, '') AS product_id,
+        si.product_name AS name,
+        SUM(si.quantity) AS quantity,
+        AVG(si.unit_cost) AS cost_price,
+        AVG(si.unit_price) AS selling_price
+      FROM sale_items si
+      INNER JOIN sales s ON s.id = si.sale_id
+      WHERE s.sale_status = 'completed'
+        AND s.created_at >= ? AND s.created_at < ?
+      GROUP BY COALESCE(si.product_id, si.product_name), si.product_name
+      ORDER BY quantity DESC
+      ''',
+      [range.startIso, range.endIso],
+    );
+    return [
+      for (final r in rows)
+        StockRow(
+          productId: (r['product_id'] as String?) ?? '',
+          name: (r['name'] as String?) ?? 'Item',
+          quantity: (r['quantity'] as num?)?.toDouble() ?? 0,
+          costPrice: (r['cost_price'] as num?)?.toDouble(),
+          sellingPrice: (r['selling_price'] as num?)?.toDouble() ?? 0,
+        ),
+    ];
+  }
+
   Future<List<StockRow>> stockOnHand() async {
     final db = await _database.database;
     final products = await db.query(
       'products',
       where: 'active = 1',
-      orderBy: 'name ASC',
+      orderBy: 'name COLLATE NOCASE ASC',
     );
-
     final rows = <StockRow>[];
     for (final p in products) {
       final id = p['id'] as String;
-      final stock = await db.rawQuery(
-        '''
-        SELECT COALESCE(SUM(quantity), 0) AS qty
-        FROM stock_movements
-        WHERE product_id = ?
-        ''',
+      final stockRows = await db.rawQuery(
+        'SELECT COALESCE(SUM(quantity), 0) AS q FROM stock_movements WHERE product_id = ?',
         [id],
       );
+      final qty = (stockRows.first['q'] as num?)?.toDouble() ?? 0;
       rows.add(
         StockRow(
           productId: id,
-          name: p['name'] as String,
-          quantity: (stock.first['qty'] as num?)?.toDouble() ?? 0,
+          name: p['name'] as String? ?? '',
+          quantity: qty,
           costPrice: (p['cost_price'] as num?)?.toDouble(),
           sellingPrice: (p['selling_price'] as num?)?.toDouble() ?? 0,
         ),
@@ -199,51 +228,61 @@ class ReportService {
 
   Future<List<PartyBalanceRow>> debtorsOutstanding() async {
     final db = await _database.database;
-    final rows = await db.rawQuery(
-      '''
-      SELECT c.id, c.name, c.phone,
-             COALESCE(SUM(d.amount), 0) AS balance
+    final rows = await db.rawQuery('''
+      SELECT c.id, c.name, c.phone, COALESCE(SUM(d.amount), 0) AS balance
       FROM customers c
       INNER JOIN debtor_transactions d ON d.customer_id = c.id
       GROUP BY c.id
       HAVING balance > 0.001
       ORDER BY balance DESC
-      ''',
-    );
-    return rows
-        .map(
-          (r) => PartyBalanceRow(
-            id: r['id'] as String,
-            name: r['name'] as String,
-            phone: r['phone'] as String?,
-            balance: Money.round((r['balance'] as num?)?.toDouble() ?? 0),
-          ),
-        )
-        .toList();
+    ''');
+    return [
+      for (final r in rows)
+        PartyBalanceRow(
+          id: r['id'] as String,
+          name: r['name'] as String? ?? '',
+          phone: r['phone'] as String?,
+          balance: Money.round((r['balance'] as num?)?.toDouble() ?? 0),
+        ),
+    ];
   }
 
   Future<List<PartyBalanceRow>> creditorsOutstanding() async {
     final db = await _database.database;
-    final rows = await db.rawQuery(
-      '''
-      SELECT s.id, s.name, s.phone,
-             COALESCE(SUM(c.amount), 0) AS balance
+    final rows = await db.rawQuery('''
+      SELECT s.id, s.name, s.phone, COALESCE(SUM(c.amount), 0) AS balance
       FROM suppliers s
       INNER JOIN creditor_transactions c ON c.supplier_id = s.id
       GROUP BY s.id
       HAVING balance > 0.001
       ORDER BY balance DESC
-      ''',
-    );
-    return rows
-        .map(
-          (r) => PartyBalanceRow(
-            id: r['id'] as String,
-            name: r['name'] as String,
-            phone: r['phone'] as String?,
-            balance: Money.round((r['balance'] as num?)?.toDouble() ?? 0),
-          ),
-        )
-        .toList();
+    ''');
+    return [
+      for (final r in rows)
+        PartyBalanceRow(
+          id: r['id'] as String,
+          name: r['name'] as String? ?? '',
+          phone: r['phone'] as String?,
+          balance: Money.round((r['balance'] as num?)?.toDouble() ?? 0),
+        ),
+    ];
+  }
+}
+
+class DayRange {
+  final String businessDate;
+  final String startIso;
+  final String endIso;
+
+  DayRange._(this.businessDate, this.startIso, this.endIso);
+
+  factory DayRange.of(DateTime day) {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    final label =
+        '${start.year.toString().padLeft(4, '0')}-'
+        '${start.month.toString().padLeft(2, '0')}-'
+        '${start.day.toString().padLeft(2, '0')}';
+    return DayRange._(label, start.toIso8601String(), end.toIso8601String());
   }
 }
