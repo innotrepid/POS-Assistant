@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -15,7 +17,14 @@ class AppDatabase {
   Database? _database;
   bool _useMemory = false;
 
-  static const int schemaVersion = 5;
+  /// Canonical on-disk name (product is Mercate).
+  static const String dbFileName = 'mercate.db';
+
+  /// Legacy name from earlier POS-Assistant branding.
+  static const String legacyDbFileName = 'pos_assistant.db';
+
+  /// Current schema version. Bump only when structure changes.
+  static const int schemaVersion = 6;
 
   Future<Database> get database async {
     if (_database != null) {
@@ -37,7 +46,10 @@ class AppDatabase {
     }
 
     final databasesPath = await getDatabasesPath();
-    final path = join(databasesPath, 'pos_assistant.db');
+    final path = join(databasesPath, dbFileName);
+
+    // One-time migration: keep user data when renaming from the old file.
+    await _migrateLegacyFileIfNeeded(databasesPath, path);
 
     return openDatabase(
       path,
@@ -45,6 +57,25 @@ class AppDatabase {
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
+  }
+
+  /// If [mercate.db] is missing but [pos_assistant.db] exists, rename it.
+  Future<void> _migrateLegacyFileIfNeeded(
+    String databasesPath,
+    String newPath,
+  ) async {
+    try {
+      final newFile = File(newPath);
+      if (await newFile.exists()) return;
+
+      final legacyPath = join(databasesPath, legacyDbFileName);
+      final legacyFile = File(legacyPath);
+      if (!await legacyFile.exists()) return;
+
+      await legacyFile.rename(newPath);
+    } catch (_) {
+      // Non-fatal: fall through and let openDatabase create a fresh DB.
+    }
   }
 
   Future<void> _createDatabase(Database db, int version) async {
@@ -310,30 +341,7 @@ class AppDatabase {
       )
     ''');
 
-    await db.execute('CREATE INDEX idx_products_barcode ON products(barcode)');
-    await db.execute(
-      'CREATE INDEX idx_products_category ON products(category_id)',
-    );
-    await db.execute(
-      'CREATE INDEX idx_stock_product ON stock_movements(product_id)',
-    );
-    await db.execute('CREATE INDEX idx_sales_customer ON sales(customer_id)');
-    await db.execute('CREATE INDEX idx_sales_created ON sales(created_at)');
-    await db.execute(
-      'CREATE INDEX idx_debtors_customer ON debtor_transactions(customer_id)',
-    );
-    await db.execute(
-      'CREATE INDEX idx_creditors_supplier ON creditor_transactions(supplier_id)',
-    );
-    await db.execute(
-      'CREATE INDEX idx_expenses_created ON expenses(created_at)',
-    );
-    await db.execute(
-      'CREATE INDEX idx_notifications_read ON notifications(is_read)',
-    );
-    await db.execute(
-      'CREATE INDEX idx_payments_reference ON payments(reference)',
-    );
+    await _ensureIndexes(db);
   }
 
   Future<void> _upgradeDatabase(
@@ -342,11 +350,17 @@ class AppDatabase {
     int newVersion,
   ) async {
     if (oldVersion < 2) {
-      await db.execute(
-        'ALTER TABLE products ADD COLUMN track_batches INTEGER NOT NULL DEFAULT 0',
+      await _addColumnIfMissing(
+        db,
+        'products',
+        'track_batches',
+        'INTEGER NOT NULL DEFAULT 0',
       );
-      await db.execute(
-        'ALTER TABLE products ADD COLUMN has_expiry INTEGER NOT NULL DEFAULT 0',
+      await _addColumnIfMissing(
+        db,
+        'products',
+        'has_expiry',
+        'INTEGER NOT NULL DEFAULT 0',
       );
     }
     if (oldVersion < 3) {
@@ -365,9 +379,6 @@ class AppDatabase {
           created_at TEXT NOT NULL
         )
       ''');
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_expenses_created ON expenses(created_at)',
-      );
     }
     if (oldVersion < 4) {
       await db.execute('''
@@ -386,19 +397,69 @@ class AppDatabase {
           read_at TEXT
         )
       ''');
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)',
-      );
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_payments_reference ON payments(reference)',
-      );
     }
     if (oldVersion < 5) {
-      try {
-        await db.execute(
-          'ALTER TABLE sale_items ADD COLUMN refunded_quantity REAL NOT NULL DEFAULT 0',
-        );
-      } catch (_) {}
+      await _addColumnIfMissing(
+        db,
+        'sale_items',
+        'refunded_quantity',
+        'REAL NOT NULL DEFAULT 0',
+      );
+    }
+    // v6: filename rename is file-level (see _migrateLegacyFileIfNeeded).
+    // Re-assert indexes so upgrades from any older version stay consistent.
+    if (oldVersion < 6) {
+      await _ensureIndexes(db);
+    }
+  }
+
+  /// Idempotent index creation (safe on create and on every upgrade path).
+  Future<void> _ensureIndexes(Database db) async {
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_stock_product ON stock_movements(product_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sales_created ON sales(created_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_debtors_customer '
+      'ON debtor_transactions(customer_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_creditors_supplier '
+      'ON creditor_transactions(supplier_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_expenses_created ON expenses(created_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_payments_reference ON payments(reference)',
+    );
+  }
+
+  /// SQLite has no ADD COLUMN IF NOT EXISTS; ignore duplicate-column errors.
+  Future<void> _addColumnIfMissing(
+    Database db,
+    String table,
+    String column,
+    String typeAndDefault,
+  ) async {
+    try {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $typeAndDefault');
+    } catch (_) {
+      // Column already present (re-run or partial prior upgrade).
     }
   }
 
