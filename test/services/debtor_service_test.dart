@@ -54,7 +54,7 @@ void main() {
         isCreditSale: true,
       );
 
-      final afterCredit = await debtors.getCustomerBalance(customerId);
+      final afterCredit = await debtors.getBalance(customerId);
       expect(afterCredit, 100);
 
       await debtors.recordRepayment(
@@ -63,7 +63,7 @@ void main() {
         paymentType: 'cash',
       );
 
-      final afterPay = await debtors.getCustomerBalance(customerId);
+      final afterPay = await debtors.getBalance(customerId);
       expect(afterPay, 60);
     });
   });

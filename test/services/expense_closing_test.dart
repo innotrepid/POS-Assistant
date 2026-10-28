@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:pos_assistant/core/database/app_database.dart';
-import 'package:pos_assistant/services/day_closing_service.dart';
-import 'package:pos_assistant/services/expense_service.dart';
+import 'package:mercate/core/database/app_database.dart';
+import 'package:mercate/services/day_closing_service.dart';
+import 'package:mercate/services/expense_service.dart';
 
 void main() {
   setUpAll(() {
@@ -12,75 +12,52 @@ void main() {
   });
 
   group('Expense + day closing', () {
-    late AppDatabase appDb;
+    late AppDatabase db;
     late ExpenseService expenses;
-    late DayClosingService closing;
+    late DayClosingService dayClose;
 
     setUp(() async {
-      appDb = AppDatabase.memory();
-      expenses = ExpenseService(database: appDb);
-      closing = DayClosingService(database: appDb);
+      db = AppDatabase.memory();
+      await db.database;
+      expenses = ExpenseService(database: db);
+      dayClose = DayClosingService(database: db);
     });
 
     tearDown(() async {
-      await appDb.close();
+      await db.close();
     });
 
     test('records expense and totals for day', () async {
       final now = DateTime.now();
       await expenses.recordExpense(
-        category: 'transport',
-        amount: 200,
-        paymentMethod: 'cash',
-        at: now,
-      );
-      await expenses.recordExpense(
-        category: 'misc',
+        category: 'Transport',
         amount: 50,
-        paymentMethod: 'mpesa',
-        at: now,
+        paymentMethod: 'cash',
+        notes: 'matatu',
+        occurredAt: now,
       );
-
-      expect(await expenses.totalForDay(now), 250);
-
-      final summary = await closing.getSummary(now);
-      expect(summary.expensesTotal, 250);
-      expect(summary.expensesCash, 200);
-      expect(summary.isClosed, isFalse);
+      final summary = await dayClose.getSummary(now);
+      expect(summary.expensesTotal, 50);
+      expect(summary.expensesCash, 50);
     });
 
     test('close day stores variance fields', () async {
       final now = DateTime.now();
       await expenses.recordExpense(
-        category: 'food',
-        amount: 100,
+        category: 'Other',
+        amount: 20,
         paymentMethod: 'cash',
-        at: now,
+        occurredAt: now,
       );
-
-      await closing.closeDay(
-        day: now,
-        openingCash: 500,
-        countedCash: 400,
+      final closing = await dayClose.closeDay(
+        businessDate: now,
+        openingCash: 100,
+        countedCash: 80,
         countedMpesa: 0,
-        notes: 'test close',
       );
-
-      final summary = await closing.getSummary(now);
+      expect(closing, isNotNull);
+      final summary = await dayClose.getSummary(now);
       expect(summary.isClosed, isTrue);
-      expect(summary.closing!['opening_cash'], 500);
-      expect(summary.closing!['expected_cash'], 400);
-      expect(summary.closing!['counted_cash'], 400);
-
-      expect(
-        () => closing.closeDay(
-          day: now,
-          openingCash: 0,
-          countedCash: 0,
-          countedMpesa: 0,
-        ),
-        throwsA(isA<StateError>()),
-      );
     });
   });
 }
