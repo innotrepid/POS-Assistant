@@ -43,7 +43,6 @@ jobs:
             sed -i "s/applicationId \".*\"/applicationId \"com.aetherion.mercate\"/" "$f" || true
             sed -i 's/namespace *= *".*"/namespace = "com.aetherion.mercate"/' "$f" || true
             sed -i "s/namespace \".*\"/namespace \"com.aetherion.mercate\"/" "$f" || true
-            # Ensure minSdk high enough for notifications
             sed -i 's/minSdk *= *.*/minSdk = 24/' "$f" || true
             sed -i 's/minSdkVersion *.*/minSdkVersion 24/' "$f" || true
           done
@@ -60,25 +59,37 @@ jobs:
       - name: Enable core library desugaring
         run: python3 scripts/patch_desugar.py
 
+      - name: Show gradle after patches
+        run: |
+          echo "==== android/app/build.gradle.kts (head) ===="
+          head -120 android/app/build.gradle.kts 2>/dev/null || true
+          echo "==== android/app/build.gradle (head) ===="
+          head -120 android/app/build.gradle 2>/dev/null || true
+
       - run: flutter pub get
 
       - name: Build APK
         env:
           BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
         run: |
-          set -e
+          set -eo pipefail
           echo "Building Mercate ($BUILD_TYPE)"
           if [ "$BUILD_TYPE" = "debug" ]; then
-            flutter build apk --debug --verbose 2>&1 | tee build.log
+            flutter build apk --debug 2>&1 | tee build.log
           else
-            flutter build apk --release --verbose 2>&1 | tee build.log
+            flutter build apk --release 2>&1 | tee build.log
           fi
+          echo "==== APK search ===="
+          find build -name '*.apk' -type f 2>/dev/null || true
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
         if: success()
+        uses: actions/upload-artifact@v4
         with:
           name: mercate-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          path: |
+            build/app/outputs/flutter-apk/*.apk
+            build/app/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
 
