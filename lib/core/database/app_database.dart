@@ -11,14 +11,20 @@ class AppDatabase {
 
   static final AppDatabase instance = AppDatabase._();
 
+  static int _memorySeq = 0;
+
   factory AppDatabase.memory() {
     final db = AppDatabase._();
     db._useMemory = true;
+    // Unique path so concurrent/sequential tests never share one :memory: DB.
+    _memorySeq++;
+    db._memoryPath = 'file:mercate_mem_$_memorySeq?mode=memory&cache=private';
     return db;
   }
 
   Database? _database;
   bool _useMemory = false;
+  String? _memoryPath;
   String? _shopId;
   String? _shopSafeId;
 
@@ -69,9 +75,11 @@ class AppDatabase {
 
   Future<Database> _openDatabase() async {
     if (_useMemory) {
+      final path = _memoryPath ?? inMemoryDatabasePath;
       return openDatabase(
-        inMemoryDatabasePath,
+        path,
         version: schemaVersion,
+        singleInstance: false,
         onCreate: _createDatabase,
         onUpgrade: _upgradeDatabase,
       );
