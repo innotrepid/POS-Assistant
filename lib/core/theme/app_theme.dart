@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 /// Mercate brand teal.
@@ -52,25 +50,22 @@ class AppTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      // Solid surface so pushed routes (Settings, History, etc.) are not black
-      // in light mode. Tab shell still paints GlassScaffoldBody on top.
       scaffoldBackgroundColor: scheme.surface,
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        backgroundColor: scheme.surface.withValues(alpha: isDark ? 0.92 : 0.96),
+        backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         surfaceTintColor: Colors.transparent,
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: scheme.surfaceContainerHigh.withValues(alpha: isDark ? 0.55 : 0.7),
+        color: scheme.surfaceContainerLowest,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           side: BorderSide(
-            color: (isDark ? Colors.white : Colors.black)
-                .withValues(alpha: isDark ? 0.08 : 0.06),
+            color: scheme.outline.withValues(alpha: 0.14),
           ),
         ),
         margin: const EdgeInsets.symmetric(vertical: 6),
@@ -78,8 +73,7 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         elevation: 0,
         height: 68,
-        backgroundColor:
-            scheme.surfaceContainer.withValues(alpha: isDark ? 0.92 : 0.96),
+        backgroundColor: scheme.surfaceContainerLowest,
         indicatorColor: kMercateTeal.withValues(alpha: isDark ? 0.28 : 0.22),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
@@ -123,8 +117,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor:
-            scheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.45 : 0.65),
+        fillColor: scheme.surfaceContainerLow,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(
@@ -143,7 +136,6 @@ class AppTheme {
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        // Avoid label/hint overlap on dense dialogs
         floatingLabelBehavior: FloatingLabelBehavior.auto,
         isDense: false,
       ),
@@ -153,16 +145,16 @@ class AppTheme {
         ),
         side: BorderSide(color: scheme.outline.withValues(alpha: 0.2)),
         selectedColor: scheme.primary.withValues(alpha: 0.22),
-        backgroundColor: scheme.surfaceContainerHigh.withValues(alpha: 0.5),
+        backgroundColor: scheme.surfaceContainerHigh,
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: scheme.surfaceContainerHigh,
+        backgroundColor: scheme.surfaceContainerLowest,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        elevation: 8,
+        elevation: 4,
         insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       ),
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: scheme.surfaceContainer,
+        backgroundColor: scheme.surfaceContainerLowest,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -200,7 +192,7 @@ class RaisedFab extends StatelessWidget {
   }
 }
 
-/// Frosted glass panel for cards / sheets.
+/// Solid panel (no blur) — kept name for call-site compatibility.
 class GlassPanel extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -215,8 +207,8 @@ class GlassPanel extends StatelessWidget {
     required this.child,
     this.padding,
     this.margin,
-    this.borderRadius = 20,
-    this.blur = 18,
+    this.borderRadius = 16,
+    this.blur = 0,
     this.accent = false,
     this.glowColor,
   });
@@ -224,67 +216,26 @@ class GlassPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final glow = glowColor ?? kMercateTeal;
+    final borderColor = accent
+        ? (glowColor ?? kMercateTeal).withValues(alpha: 0.45)
+        : scheme.outline.withValues(alpha: 0.14);
 
     return Container(
       margin: margin,
+      padding: padding ?? const EdgeInsets.all(16),
       decoration: BoxDecoration(
+        color: accent
+            ? scheme.primaryContainer.withValues(alpha: 0.35)
+            : scheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(
-          color: accent
-              ? glow.withValues(alpha: isDark ? 0.35 : 0.4)
-              : (isDark ? Colors.white : Colors.black)
-                  .withValues(alpha: isDark ? 0.1 : 0.06),
-          width: accent ? 1.2 : 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-          if (accent)
-            BoxShadow(
-              color: glow.withValues(alpha: isDark ? 0.18 : 0.12),
-              blurRadius: 28,
-              spreadRadius: -4,
-            ),
-        ],
+        border: Border.all(color: borderColor),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: Container(
-            padding: padding ?? const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: accent
-                    ? [
-                        glow.withValues(alpha: isDark ? 0.22 : 0.18),
-                        scheme.surfaceContainer
-                            .withValues(alpha: isDark ? 0.4 : 0.55),
-                      ]
-                    : [
-                        scheme.surfaceContainerHighest
-                            .withValues(alpha: isDark ? 0.5 : 0.7),
-                        scheme.surfaceContainer
-                            .withValues(alpha: isDark ? 0.38 : 0.55),
-                      ],
-              ),
-            ),
-            child: child,
-          ),
-        ),
-      ),
+      child: child,
     );
   }
 }
 
-/// Soft gradient backdrop behind glass surfaces.
+/// Plain scaffold body (no glass gradient stack).
 class GlassScaffoldBody extends StatelessWidget {
   final Widget child;
 
@@ -292,61 +243,9 @@ class GlassScaffoldBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: isDark
-                    ? const [
-                        Color(0xFF0B1412),
-                        Color(0xFF0E1F1A),
-                        Color(0xFF0A1620),
-                      ]
-                    : const [
-                        Color(0xFFF5FBFA),
-                        Color(0xFFE8F6F1),
-                        Color(0xFFEEF4FF),
-                      ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: -80,
-          right: -40,
-          child: IgnorePointer(
-            child: Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: kMercateTeal.withValues(alpha: isDark ? 0.14 : 0.12),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 40,
-          left: -60,
-          child: IgnorePointer(
-            child: Container(
-              width: 180,
-              height: 180,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: kMercateTealDeep.withValues(alpha: isDark ? 0.1 : 0.08),
-              ),
-            ),
-          ),
-        ),
-        child,
-      ],
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surface,
+      child: child,
     );
   }
 }
