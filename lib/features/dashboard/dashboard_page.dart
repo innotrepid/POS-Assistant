@@ -6,6 +6,7 @@ import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/day_closing_service.dart';
 import '../../services/expense_service.dart';
+import '../../services/inventory_service.dart';
 import '../../services/security_service.dart';
 import '../security/lock_screen.dart';
 import '../settings/business_profile_page.dart';
@@ -33,11 +34,13 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   final _closing = DayClosingService();
   final _expenses = ExpenseService();
+  final _inventory = InventoryService();
   final _profileService = BusinessProfileService();
   final _security = SecurityService();
 
   DaySummary? _summary;
   List<Map<String, dynamic>> _todayExpenses = [];
+  SpoilageDaySummary _spoilage = SpoilageDaySummary.empty;
   String _shopName = 'My shop';
   String _profileLabel = '';
   bool _loading = true;
@@ -65,12 +68,14 @@ class _DashboardPageState extends State<DashboardPage> {
       final now = DateTime.now();
       final summary = await _closing.getSummary(now);
       final expenses = await _expenses.listExpenses(day: now);
+      final spoilage = await _inventory.getSpoilageSummary(now);
       final name = await _profileService.getBusinessName();
       final profile = await _profileService.getProfile();
       if (!mounted) return;
       setState(() {
         _summary = summary;
         _todayExpenses = expenses;
+        _spoilage = spoilage;
         _shopName = name;
         _profileLabel = profile.label;
         _loading = false;
@@ -556,6 +561,45 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ],
         ),
+        if (_spoilage.eventCount > 0) ...[
+          const SizedBox(height: 12),
+          GlassPanel(
+            borderRadius: 20,
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.compost_outlined,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Spoilage today',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      Text(
+                        '${_spoilage.eventCount} record'
+                        '${_spoilage.eventCount == 1 ? '' : 's'} · '
+                        'est. cost ${Money.format(_spoilage.estimatedCost)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 18),
 
         GlassPanel(
@@ -600,10 +644,8 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 22),
 
-        // NOTE: remainder of dashboard UI unchanged from prior revision;
-        // full file retained via local patch — if truncated, restore from git.
         Text(
-          'Today\'s expenses',
+          "Today's expenses",
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -622,7 +664,9 @@ class _DashboardPageState extends State<DashboardPage> {
               contentPadding: EdgeInsets.zero,
               title: Text(e['category'] as String? ?? 'Expense'),
               subtitle: Text(e['description'] as String? ?? ''),
-              trailing: Text(Money.format((e['amount'] as num?)?.toDouble() ?? 0)),
+              trailing: Text(
+                Money.format((e['amount'] as num?)?.toDouble() ?? 0),
+              ),
             ),
       ],
     );
@@ -637,24 +681,34 @@ class _DashboardPageState extends State<DashboardPage> {
     final scheme = Theme.of(context).colorScheme;
     return GlassPanel(
       borderRadius: 20,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: warn ? scheme.error : scheme.primary),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+          Icon(
+            icon,
+            size: 18,
+            color: warn ? scheme.error : scheme.primary,
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 14),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
           Text(
             value,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
                 ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
