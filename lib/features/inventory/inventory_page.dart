@@ -4,6 +4,7 @@ import '../../core/models/product.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/inventory_service.dart';
+import '../../services/starter_catalogue_service.dart';
 import '../suppliers/receive_purchase_page.dart';
 
 class InventoryPage extends StatefulWidget {
@@ -23,6 +24,7 @@ class InventoryPage extends StatefulWidget {
 class _InventoryPageState extends State<InventoryPage> {
   final _inventory = InventoryService();
   final _profiles = BusinessProfileService.instance;
+  final _starter = StarterCatalogueService();
 
   List<Product> _products = [];
   Map<String, double> _stock = {};
@@ -45,7 +47,6 @@ class _InventoryPageState extends State<InventoryPage> {
       final profile = await _profiles.getProfile();
       final products = await _inventory.getAllProducts();
       final stock = <String, double>{};
-      // One pass — avoid N+1 if service supports bulk later
       for (final p in products) {
         stock[p.id] = await _inventory.getStock(p.id);
       }
@@ -65,11 +66,100 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
+  Future<void> _seedStarter() async {
+    try {
+      final n = await _starter.seedIfEmpty();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            n == 0
+                ? 'Catalogue already has products, or no starter for this profile.'
+                : 'Added $n starter products (edit prices as needed)',
+          ),
+        ),
+      );
+      if (n > 0) await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _spoilage(Product product) async {
+    final qtyCtrl = TextEditingController();
+    var reason = kSpoilageReasons.first;
+    final otherCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: Text('Spoilage · ${product.name}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: qtyCtrl,
+                  decoration: InputDecoration(labelText: 'Quantity (${product.unit})'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 12),
+                Text('Reason', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final r in kSpoilageReasons)
+                      ChoiceChip(
+                        label: Text(r),
+                        selected: reason == r,
+                        onSelected: (_) => setLocal(() => reason = r),
+                      ),
+                  ],
+                ),
+                if (reason == 'Other') ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: otherCtrl,
+                    decoration: const InputDecoration(labelText: 'Describe'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Record')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final why = reason == 'Other' ? otherCtrl.text.trim() : reason;
+      await _inventory.recordSpoilage(
+        productId: product.id,
+        quantity: Money.parse(qtyCtrl.text),
+        reason: why.isEmpty ? 'Other' : why,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Spoilage recorded for ${product.name}')),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   Future<void> _openReceiveGoods() async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const ReceivePurchasePage(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const ReceivePurchasePage()),
     );
     _load();
   }
@@ -106,20 +196,14 @@ class _InventoryPageState extends State<InventoryPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: priceCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Selling price'),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
+                      decoration: const InputDecoration(labelText: 'Selling price'),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: costCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Cost (optional)'),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
+                      decoration: const InputDecoration(labelText: 'Cost (optional)'),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     ),
                     const SizedBox(height: 12),
                     Text('Unit', style: Theme.of(context).textTheme.labelLarge),
@@ -132,8 +216,7 @@ class _InventoryPageState extends State<InventoryPage> {
                           ChoiceChip(
                             label: Text(u),
                             selected: selectedUnit == u,
-                            onSelected: (_) =>
-                                setLocal(() => selectedUnit = u),
+                            onSelected: (_) => setLocal(() => selectedUnit = u),
                           ),
                       ],
                     ),
@@ -145,9 +228,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         helperText: 'e.g. 30 $selectedUnit',
                         border: const OutlineInputBorder(),
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     ),
                   ],
                 ),
@@ -172,8 +253,7 @@ class _InventoryPageState extends State<InventoryPage> {
       final product = await _inventory.createProduct(
         name: nameCtrl.text.trim(),
         sellingPrice: Money.parse(priceCtrl.text),
-        costPrice:
-            costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
+        costPrice: costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
         unit: selectedUnit,
       );
       final opening = Money.parse(qtyCtrl.text);
@@ -181,9 +261,7 @@ class _InventoryPageState extends State<InventoryPage> {
         await _inventory.addStock(
           productId: product.id,
           quantity: opening,
-          unitCost: costCtrl.text.trim().isEmpty
-              ? null
-              : Money.parse(costCtrl.text),
+          unitCost: costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
           movementType: 'opening_stock',
           reason: 'Opening stock on product create',
         );
@@ -191,9 +269,7 @@ class _InventoryPageState extends State<InventoryPage> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -211,53 +287,37 @@ class _InventoryPageState extends State<InventoryPage> {
           children: [
             TextField(
               controller: qtyController,
-              decoration: InputDecoration(
-                labelText: 'Quantity (${product.unit})',
-              ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: 'Quantity (${product.unit})'),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               autofocus: true,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: costController,
-              decoration: const InputDecoration(
-                labelText: 'Unit cost (optional)',
-              ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Unit cost (optional)'),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Add'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
         ],
       ),
     );
     if (ok != true) return;
     try {
-      await _inventory.addStock(
+      await _inventory.restockBoughtToday(
         productId: product.id,
         quantity: Money.parse(qtyController.text),
         unitCost: costController.text.trim().isEmpty
             ? null
             : Money.parse(costController.text),
-        movementType: 'market_restock',
-        reason: 'Bought today',
       );
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -332,8 +392,25 @@ class _InventoryPageState extends State<InventoryPage> {
                   ),
                 )
               : _products.isEmpty
-                  ? const Center(
-                      child: Text('No products yet. Tap + to add.'),
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'No products yet. Tap + to add, or load a starter list.',
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            FilledButton.icon(
+                              onPressed: _seedStarter,
+                              icon: const Icon(Icons.playlist_add),
+                              label: const Text('Load starter catalogue'),
+                            ),
+                          ],
+                        ),
+                      ),
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
@@ -342,8 +419,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       itemBuilder: (context, index) {
                         final p = _products[index];
                         final qty = _stock[p.id] ?? 0;
-                        final low =
-                            p.minimumStock > 0 && qty <= p.minimumStock;
+                        final low = p.minimumStock > 0 && qty <= p.minimumStock;
                         return ListTile(
                           title: Text(
                             p.name,
@@ -353,14 +429,23 @@ class _InventoryPageState extends State<InventoryPage> {
                             '${Money.format(p.sellingPrice)} · '
                             '$qty ${p.unit}'
                             '${low ? ' · LOW' : ''}',
-                            style: TextStyle(
-                              color: low ? scheme.error : null,
-                            ),
+                            style: TextStyle(color: low ? scheme.error : null),
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.add_box_outlined),
-                            tooltip: 'Bought today',
-                            onPressed: () => _addStockFlow(p),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.add_box_outlined),
+                                tooltip: 'Bought today',
+                                onPressed: () => _addStockFlow(p),
+                              ),
+                              if (qty > 0)
+                                IconButton(
+                                  icon: Icon(Icons.eco_outlined, color: scheme.error),
+                                  tooltip: 'Spoilage',
+                                  onPressed: () => _spoilage(p),
+                                ),
+                            ],
                           ),
                         );
                       },
