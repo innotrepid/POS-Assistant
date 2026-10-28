@@ -2,30 +2,39 @@
 """Generate Android launcher icons from assets/images/mercate_logo.png"""
 from __future__ import annotations
 
+import importlib
 import subprocess
 import sys
 from pathlib import Path
+
+# Install Pillow into a local folder so GitHub Actions always finds it
+_PILLOW_DIR = Path("/tmp/mercate_pillow")
 
 
 def ensure_pillow() -> None:
     try:
         import PIL  # noqa: F401
+
         return
     except ImportError:
         pass
+
+    _PILLOW_DIR.mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable,
         "-m",
         "pip",
         "install",
         "pillow",
-        "--quiet",
         "--disable-pip-version-check",
+        "--target",
+        str(_PILLOW_DIR),
     ]
-    # Ubuntu 24+ runners often block system pip without this flag
-    cmd.append("--break-system-packages")
     print("Installing pillow:", " ".join(cmd))
     subprocess.check_call(cmd)
+    if str(_PILLOW_DIR) not in sys.path:
+        sys.path.insert(0, str(_PILLOW_DIR))
+    importlib.invalidate_caches()
 
 
 ensure_pillow()
@@ -58,4 +67,5 @@ for folder, size in sizes.items():
     r = img.resize((size, size), Image.Resampling.LANCZOS)
     r.save(d / "ic_launcher.png")
     r.save(d / "ic_launcher_round.png")
+    r.save(d / "ic_launcher_foreground.png")
 print("Launcher icons written")
