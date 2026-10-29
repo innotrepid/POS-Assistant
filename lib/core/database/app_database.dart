@@ -11,12 +11,17 @@ class AppDatabase {
   factory AppDatabase.memory() {
     final db = AppDatabase._();
     db._useMemory = true;
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    db._memoryPath = 'mercate_mem_' + stamp.toString() + '.db';
+    db._memoryMetaPath = 'mercate_meta_mem_' + stamp.toString() + '.db';
     return db;
   }
 
   Database? _database;
   Database? _metaDatabase;
   bool _useMemory = false;
+  String? _memoryPath;
+  String? _memoryMetaPath;
   String _profileId = 'duka';
 
   static const int schemaVersion = 8;
@@ -49,8 +54,9 @@ class AppDatabase {
     if (_metaDatabase != null) return _metaDatabase!;
     if (_useMemory) {
       _metaDatabase = await openDatabase(
-        inMemoryDatabasePath,
+        _memoryMetaPath ?? inMemoryDatabasePath,
         version: 1,
+        singleInstance: false,
         onCreate: (db, _) async {
           await db.execute('''
             CREATE TABLE settings (
@@ -106,8 +112,9 @@ class AppDatabase {
   Future<Database> _openProfileDatabase(String profileId) async {
     if (_useMemory) {
       return openDatabase(
-        inMemoryDatabasePath,
+        _memoryPath ?? inMemoryDatabasePath,
         version: schemaVersion,
+        singleInstance: false,
         onCreate: _createDatabase,
         onUpgrade: _upgradeDatabase,
       );
