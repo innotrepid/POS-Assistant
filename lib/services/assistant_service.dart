@@ -97,7 +97,20 @@ class AssistantService {
     'unreachable': 'Unreachable',
   };
 
+  /// Convenience for tests and simple callers.
+  Future<String> reply(String raw) async => (await ask(raw)).text;
+
   Future<AssistantReply> ask(String raw) async {
+    try {
+      return await _askImpl(raw);
+    } catch (e) {
+      return AssistantReply(
+        'Something went wrong reading shop data. Open the app once to finish setup, then try again.\n($e)',
+      );
+    }
+  }
+
+  Future<AssistantReply> _askImpl(String raw) async {
     final q = raw.trim().toLowerCase();
     if (q.isEmpty) {
       return const AssistantReply(
