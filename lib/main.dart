@@ -250,7 +250,7 @@ class _AppShellState extends State<AppShell> {
           selectedIcon: Icon(Icons.point_of_sale),
           label: 'Sell',
         ),
-        visible: (f) => f.pos,
+        visible: (f) => f.sales,
       ),
       _NavItem(
         id: 'stock',
