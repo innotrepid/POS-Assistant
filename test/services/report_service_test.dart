@@ -44,8 +44,8 @@ void main() {
       );
 
       final day = await reports.daySales(DateTime.now());
-      expect(day['sales_total'], 100);
-      expect(day['sale_count'], 1);
+      expect(day.salesTotal, 100);
+      expect(day.saleCount, 1);
     });
   });
 }
