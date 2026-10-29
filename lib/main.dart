@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'core/database/app_database.dart';
@@ -26,6 +29,14 @@ final themeController = ThemeController();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('FlutterError: ${details.exceptionAsString()}');
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Uncaught: $error\n$stack');
+    return true;
+  };
   try {
     await AppDatabase.instance.metaDatabase;
     final profiles = BusinessProfileService.instance;
@@ -38,7 +49,6 @@ Future<void> main() async {
   try {
     await SystemNotificationService.instance.init();
   } catch (_) {}
-  // Everyday local backup (no network) — once per calendar day after shop is set up
   try {
     final profiles = BusinessProfileService.instance;
     if (await profiles.hasCompletedOnboarding()) {
@@ -212,18 +222,22 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _openNotifications() {
-    Navigator.of(context).push(
+    Navigator.of(context)
+        .push(
       MaterialPageRoute<void>(builder: (_) => const NotificationsPage()),
-    ).then((_) async {
+    )
+        .then((_) async {
       final n = await _notifications.unreadCount();
       if (mounted) setState(() => _unread = n);
     });
   }
 
   void _openSettings() {
-    Navigator.of(context).push(
+    Navigator.of(context)
+        .push(
       MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
-    ).then((_) => _bootstrap());
+    )
+        .then((_) => _bootstrap());
   }
 
   void _openAssistant() {
