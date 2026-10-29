@@ -5,7 +5,9 @@ import '../../core/models/customer.dart';
 import '../../core/utils/money.dart';
 import '../../services/customer_service.dart';
 import '../../services/debtor_service.dart';
+import '../../services/policy_service.dart';
 import 'customer_statement_page.dart';
+import 'debtors_page.dart';
 
 class CustomersPage extends StatefulWidget {
   const CustomersPage({super.key});
@@ -17,9 +19,12 @@ class CustomersPage extends StatefulWidget {
 class _CustomersPageState extends State<CustomersPage> {
   final _service = CustomerService();
   final _debtors = DebtorService();
+  final _policies = PolicyService();
 
   List<Customer> _customers = [];
   final Map<String, double> _balances = {};
+  int _debtorCount = 0;
+  int _overdueCount = 0;
   bool _loading = true;
   String? _error;
 
@@ -40,12 +45,16 @@ class _CustomersPageState extends State<CustomersPage> {
       for (final c in list) {
         balances[c.id] = await _debtors.getBalance(c.id);
       }
+      final overdueDays = await _policies.getOverdueDebtDays();
+      final outstanding = await _debtors.listOutstanding(overdueDays: overdueDays);
       if (!mounted) return;
       setState(() {
         _customers = list;
         _balances
           ..clear()
           ..addAll(balances);
+        _debtorCount = outstanding.length;
+        _overdueCount = outstanding.where((d) => d.isOverdue).length;
         _loading = false;
       });
     } catch (e) {
@@ -55,6 +64,13 @@ class _CustomersPageState extends State<CustomersPage> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _openDebtors() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const DebtorsPage()),
+    );
+    if (mounted) _load();
   }
 
   Future<void> _addCustomer() async {
@@ -106,8 +122,30 @@ class _CustomersPageState extends State<CustomersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Customers')),
+      appBar: AppBar(
+        title: const Text('Customers'),
+        actions: [
+          IconButton(
+            tooltip: _debtorCount == 0
+                ? 'Who owes you'
+                : 'Who owes you ($_debtorCount)'
+                    '${_overdueCount > 0 ? ' · $_overdueCount overdue' : ''}',
+            onPressed: _openDebtors,
+            icon: Badge(
+              isLabelVisible: _debtorCount > 0,
+              label: Text('$_debtorCount'),
+              backgroundColor: _overdueCount > 0 ? scheme.error : null,
+              child: Icon(
+                Icons.account_balance_wallet_outlined,
+                color: _overdueCount > 0 ? scheme.error : null,
+              ),
+            ),
+          ),
+        ],
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 72),
@@ -121,44 +159,79 @@ class _CustomersPageState extends State<CustomersPage> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
-              : _customers.isEmpty
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text(
-                          'No customers yet. Tap Add customer for people who buy on credit.',
-                          textAlign: TextAlign.center,
+              : Column(
+                  children: [
+                    if (_debtorCount > 0)
+                      Material(
+                        color: scheme.errorContainer.withValues(alpha: 0.35),
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.account_balance_wallet_outlined,
+                            color: scheme.error,
+                          ),
+                          title: Text(
+                            '$_debtorCount customer${_debtorCount == 1 ? '' : 's'} owe you'
+                            '${_overdueCount > 0 ? ' · $_overdueCount overdue' : ''}',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: const Text('Call, SMS, promises — open wallet'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _openDebtors,
                         ),
                       ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 120),
-                      itemCount: _customers.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final c = _customers[index];
-                        final bal = _balances[c.id] ?? 0;
-                        return ListTile(
-                          title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(
-                            [
-                              if (c.phone != null && c.phone!.isNotEmpty) c.phone!,
-                              if (bal > 0) 'Owes ${Money.format(bal)}',
-                            ].join(' · '),
-                          ),
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => CustomerStatementPage(
-                                  customerId: c.id,
-                                  customerName: c.name,
+                    Expanded(
+                      child: _customers.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Text(
+                                  'No customers yet. Tap Add customer for people who buy on credit.',
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
-                            );
-                          },
-                        );
-                      },
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(0, 0, 0, 120),
+                              itemCount: _customers.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final c = _customers[index];
+                                final bal = _balances[c.id] ?? 0;
+                                return ListTile(
+                                  title: Text(
+                                    c.name,
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                  subtitle: Text(
+                                    [
+                                      if (c.phone != null && c.phone!.isNotEmpty) c.phone!,
+                                      if (bal > 0) 'Owes ${Money.format(bal)}',
+                                    ].join(' · '),
+                                  ),
+                                  trailing: bal > 0
+                                      ? Icon(
+                                          Icons.account_balance_wallet_outlined,
+                                          size: 20,
+                                          color: scheme.error,
+                                        )
+                                      : null,
+                                  onTap: () async {
+                                    await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => CustomerStatementPage(
+                                          customerId: c.id,
+                                          customerName: c.name,
+                                        ),
+                                      ),
+                                    );
+                                    if (mounted) _load();
+                                  },
+                                );
+                              },
+                            ),
                     ),
+                  ],
+                ),
     );
   }
 }
