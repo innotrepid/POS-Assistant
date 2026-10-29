@@ -62,7 +62,6 @@ jobs:
             fi
           done
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-          # Flutter plugins (local_auth, notifications) need a modern minSdk
           for f in android/app/build.gradle android/app/build.gradle.kts; do
             if [ -f "$f" ]; then
               sed -i 's/minSdk *= *.*/minSdk = 24/' "$f" || true
@@ -111,7 +110,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mercate-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
 

@@ -4,13 +4,26 @@ on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: "APK type"
+        description: APK type
         required: true
         default: release
         type: choice
         options:
           - release
           - debug
+  push:
+    branches:
+      - foundation
+    paths:
+      - lib/**
+      - pubspec.yaml
+      - assets/**
+      - scripts/**
+      - .github/workflows/apk.yml
+
+concurrency:
+  group: mercate-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -38,35 +51,40 @@ jobs:
         run: |
           set -e
           for f in android/app/build.gradle android/app/build.gradle.kts; do
-            [ -f "$f" ] || continue
-            sed -i 's/applicationId *= *".*"/applicationId = "com.aetherion.mercate"/' "$f" || true
-            sed -i "s/applicationId \".*\"/applicationId \"com.aetherion.mercate\"/" "$f" || true
-            sed -i 's/namespace *= *".*"/namespace = "com.aetherion.mercate"/' "$f" || true
-            sed -i "s/namespace \".*\"/namespace \"com.aetherion.mercate\"/" "$f" || true
-            sed -i 's/minSdk *= *.*/minSdk = 24/' "$f" || true
-            sed -i 's/minSdkVersion *.*/minSdkVersion 24/' "$f" || true
+            if [ -f "$f" ]; then
+              sed -i 's/applicationId *= *"[^"]*"/applicationId = "com.aetherion.mercate"/' "$f" || true
+              sed -i 's/applicationId "[^"]*"/applicationId "com.aetherion.mercate"/' "$f" || true
+              sed -i 's/namespace *= *"[^"]*"/namespace = "com.aetherion.mercate"/' "$f" || true
+              sed -i 's/minSdk *= *.*/minSdk = 24/' "$f" || true
+              sed -i 's/minSdkVersion *.*/minSdkVersion 24/' "$f" || true
+            fi
           done
-
-          if [ -f android/app/src/main/AndroidManifest.xml ]; then
-            sed -i 's/android:label="[^"]*"/android:label="Mercate"/' android/app/src/main/AndroidManifest.xml
-            grep -q POST_NOTIFICATIONS android/app/src/main/AndroidManifest.xml || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
-            grep -q USE_BIOMETRIC android/app/src/main/AndroidManifest.xml || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' android/app/src/main/AndroidManifest.xml
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's/android:label="[^"]*"/android:label="Mercate"/' "$MANIFEST"
+            grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
+            grep -q "POST_NOTIFICATIONS" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
           fi
 
       - name: Install Mercate launcher icons
-        run: python3 scripts/gen_launcher_icons.py
+        run: |
+          python3 -m pip install pillow --break-system-packages --quiet || true
+          python3 scripts/gen_launcher_icons.py
 
       - name: Enable core library desugaring
         run: python3 scripts/patch_desugar.py
 
+      - name: Package visibility for dialer/SMS
+        run: python3 scripts/patch_manifest_queries.py
+
       - name: Show gradle after patches
         run: |
-          echo "==== android/app/build.gradle.kts (head) ===="
-          head -120 android/app/build.gradle.kts 2>/dev/null || true
-          echo "==== android/app/build.gradle (head) ===="
-          head -120 android/app/build.gradle 2>/dev/null || true
+          for f in android/app/build.gradle android/app/build.gradle.kts; do
+            [ -f "$f" ] && echo "=== $f ===" && head -80 "$f" || true
+          done
 
-      - run: flutter pub get
+      - name: Run flutter pub get
+        run: flutter pub get
 
       - name: Build APK
         env:
@@ -79,8 +97,8 @@ jobs:
           else
             flutter build apk --release 2>&1 | tee build.log
           fi
-          echo "==== APK search ===="
-          find build -name '*.apk' -type f 2>/dev/null || true
+          echo "APKs produced:"
+          find build/app/outputs/flutter-apk -name '*.apk' -type f 2>/dev/null || true
 
       - name: Upload APK
         if: success()
@@ -88,8 +106,8 @@ jobs:
         with:
           name: mercate-apk
           path: |
-            build/app/outputs/flutter-apk/*.apk
-            build/app/outputs/apk/**/*.apk
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
 
