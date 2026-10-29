@@ -1,34 +1,43 @@
-/// Money helpers for POS Assistant.
-///
-/// We currently store money as REAL in the database for simplicity.
-/// All business logic should still go through these helpers so we can
-/// later switch to integer cents without rewriting the whole app.
+/// Money helpers for KES-style amounts (2 decimal places).
 class Money {
-  /// Format a double amount for display (e.g. 1250.5 → "KSh 1,250.50")
-  static String format(
-    double amount, {
-    String symbol = 'KSh',
-    int decimals = 2,
-  }) {
-    final fixed = amount.toStringAsFixed(decimals);
-    final parts = fixed.split('.');
-    final whole = parts[0].replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
-    final fraction = parts.length > 1 ? parts[1] : '00';
-    return '$symbol $whole.$fraction';
+  Money._();
+
+  static String format(num value, {String currency = 'KSh'}) {
+    final v = round(value.toDouble());
+    final neg = v < 0;
+    final abs = neg ? -v : v;
+    final whole = abs.truncate();
+    final frac = ((abs - whole) * 100).round().clamp(0, 99);
+    final wholeStr = _groupThousands(whole);
+    final fracStr = frac.toString().padLeft(2, '0');
+    final body = frac == 0 ? wholeStr : '$wholeStr.$fracStr';
+    return neg ? '-$currency $body' : '$currency $body';
   }
 
-  /// Safe parse from user input ("1,250.50", "1250", "KSh 1250.5" etc.)
+  /// Safe parse from user input ("1,250.50", "1250", "KSh 1250.5", empty → 0).
   static double parse(String input) {
-    final cleaned = input.replaceAll(RegExp(r'[^\d.]'), '').trim();
-    if (cleaned.isEmpty) return 0;
-    return double.tryParse(cleaned) ?? 0;
+    var s = input.trim();
+    if (s.isEmpty) return 0;
+    s = s.replaceAll(RegExp(r'[^\d,.\-]'), '');
+    s = s.replaceAll(',', '');
+    if (s.isEmpty || s == '-' || s == '.' || s == '-.') return 0;
+    final v = double.tryParse(s);
+    if (v == null || v.isNaN || v.isInfinite) return 0;
+    return round(v);
   }
 
-  /// Round to 2 decimal places (useful before writing to DB)
   static double round(double value) {
+    if (value.isNaN || value.isInfinite) return 0;
     return double.parse(value.toStringAsFixed(2));
+  }
+
+  static String _groupThousands(int n) {
+    final s = n.toString();
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+      buf.write(s[i]);
+    }
+    return buf.toString();
   }
 }

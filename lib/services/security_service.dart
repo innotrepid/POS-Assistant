@@ -20,6 +20,11 @@ class SecurityService {
   static const _kPinHash = 'security_pin_hash';
   static const _kLockEnabled = 'security_lock_enabled';
   static const _kBiometricPreferred = 'security_biometric_preferred';
+  static const _kFailedAttempts = 'security_failed_attempts';
+  static const _kLockoutUntil = 'security_lockout_until';
+
+  static const maxFailedAttempts = 5;
+  static const lockoutDuration = Duration(minutes: 2);
 
   Future<bool> isLockEnabled() async {
     return (await _get(_kLockEnabled)) == '1';
@@ -45,26 +50,88 @@ class SecurityService {
     await _set(_kLockEnabled, enabled ? '1' : '0');
   }
 
-  Future<void> setPin(String pin) async {
+  /// Set or change PIN. If a PIN already exists, [currentPin] must match.
+  Future<void> setPin(String pin, {String? currentPin}) async {
     final cleaned = pin.trim();
-    if (cleaned.length < 4) {
-      throw ArgumentError('PIN must be at least 4 digits.');
+    if (cleaned.length < 4 || cleaned.length > 12) {
+      throw ArgumentError('PIN must be 4–12 digits.');
     }
     if (!RegExp(r'^\d+$').hasMatch(cleaned)) {
       throw ArgumentError('PIN must contain digits only.');
     }
+    if (await hasPin()) {
+      if (currentPin == null || currentPin.trim().isEmpty) {
+        throw ArgumentError('Enter your current PIN to change it.');
+      }
+      final ok = await verifyPin(currentPin, countFailures: false);
+      if (!ok) {
+        throw ArgumentError('Current PIN is incorrect.');
+      }
+    }
     await _set(_kPinHash, _hash(cleaned));
+    await _clearFailures();
   }
 
-  Future<void> clearPinAndLock() async {
+  Future<void> clearPinAndLock({String? currentPin}) async {
+    if (await hasPin()) {
+      if (currentPin == null ||
+          !(await verifyPin(currentPin, countFailures: false))) {
+        throw ArgumentError('Current PIN is required to remove lock.');
+      }
+    }
     await _set(_kPinHash, '');
     await _set(_kLockEnabled, '0');
+    await _clearFailures();
   }
 
-  Future<bool> verifyPin(String pin) async {
+  Future<int> lockoutSecondsRemaining() async {
+    final untilRaw = await _get(_kLockoutUntil);
+    if (untilRaw == null || untilRaw.isEmpty) return 0;
+    final until = DateTime.tryParse(untilRaw);
+    if (until == null) return 0;
+    final left = until.difference(DateTime.now()).inSeconds;
+    return left > 0 ? left : 0;
+  }
+
+  Future<bool> isLockedOut() async {
+    return (await lockoutSecondsRemaining()) > 0;
+  }
+
+  Future<bool> verifyPin(
+    String pin, {
+    bool countFailures = true,
+  }) async {
+    if (await isLockedOut()) {
+      final sec = await lockoutSecondsRemaining();
+      throw StateError('Too many wrong attempts. Try again in ${sec}s.');
+    }
     final stored = await _get(_kPinHash);
     if (stored == null || stored.isEmpty) return false;
-    return stored == _hash(pin.trim());
+    final ok = stored == _hash(pin.trim());
+    if (ok) {
+      await _clearFailures();
+      return true;
+    }
+    if (countFailures) {
+      await _registerFailure();
+    }
+    return false;
+  }
+
+  Future<void> _registerFailure() async {
+    final raw = await _get(_kFailedAttempts);
+    final n = (int.tryParse(raw ?? '0') ?? 0) + 1;
+    await _set(_kFailedAttempts, '$n');
+    if (n >= maxFailedAttempts) {
+      final until = DateTime.now().add(lockoutDuration);
+      await _set(_kLockoutUntil, until.toIso8601String());
+      await _set(_kFailedAttempts, '0');
+    }
+  }
+
+  Future<void> _clearFailures() async {
+    await _set(_kFailedAttempts, '0');
+    await _set(_kLockoutUntil, '');
   }
 
   Future<bool> canCheckBiometrics() async {
@@ -84,12 +151,12 @@ class SecurityService {
     String reason = 'Unlock Mercate',
   }) async {
     try {
+      if (!await canCheckBiometrics()) return false;
       return await _localAuth.authenticate(
         localizedReason: reason,
         options: const AuthenticationOptions(
-          biometricOnly: false,
           stickyAuth: true,
-          useErrorDialogs: true,
+          biometricOnly: true,
         ),
       );
     } catch (_) {
@@ -114,7 +181,6 @@ class SecurityService {
     String biometricReason = 'Confirm it is you',
   }) async {
     if (!(await isLockEnabled())) return true;
-
     if (await isBiometricPreferred() && await canCheckBiometrics()) {
       final ok = await authenticateBiometric(reason: biometricReason);
       if (ok) return true;
