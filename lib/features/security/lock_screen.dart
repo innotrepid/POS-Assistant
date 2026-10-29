@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/security_service.dart';
 
+/// Full-screen gate when app lock is enabled.
 class LockScreen extends StatefulWidget {
   final VoidCallback onUnlocked;
 
@@ -16,13 +17,13 @@ class _LockScreenState extends State<LockScreen> {
   final _security = SecurityService();
   final _pinCtrl = TextEditingController();
   bool _busy = false;
-  bool _bioAvailable = false;
   String? _error;
+  bool _bioTried = false;
 
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    _tryBio();
   }
 
   @override
@@ -31,30 +32,16 @@ class _LockScreenState extends State<LockScreen> {
     super.dispose();
   }
 
-  Future<void> _bootstrap() async {
-    final bio = await _security.canCheckBiometrics();
-    if (mounted) setState(() => _bioAvailable = bio);
-    if (await _security.isBiometricPreferred() && bio) {
-      await _tryBio();
-    }
-  }
-
   Future<void> _tryBio() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    final ok = await _security.authenticateBiometric(
-      reason: 'Unlock Mercate',
-    );
-    if (!mounted) return;
-    if (ok) {
-      widget.onUnlocked();
-    } else {
-      setState(() {
-        _busy = false;
-        _error = 'Biometric failed — enter PIN';
-      });
+    if (_bioTried) return;
+    _bioTried = true;
+    try {
+      final ok = await _security.tryBiometricUnlock();
+      if (ok && mounted) widget.onUnlocked();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Biometric failed — enter PIN');
+      }
     }
   }
 
@@ -63,14 +50,26 @@ class _LockScreenState extends State<LockScreen> {
       _busy = true;
       _error = null;
     });
-    final ok = await _security.unlockWithPin(_pinCtrl.text);
-    if (!mounted) return;
-    if (ok) {
-      widget.onUnlocked();
-    } else {
+    try {
+      final ok = await _security.unlockWithPin(_pinCtrl.text);
+      if (!mounted) return;
+      if (ok) {
+        widget.onUnlocked();
+      } else {
+        setState(() {
+          _busy = false;
+          _error = 'Incorrect PIN';
+          _pinCtrl.clear();
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'Incorrect PIN';
+        _error = e
+            .toString()
+            .replaceFirst('Bad state: ', '')
+            .replaceFirst('Exception: ', '');
         _pinCtrl.clear();
       });
     }
@@ -88,43 +87,39 @@ class _LockScreenState extends State<LockScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Image.asset(
-                    'assets/images/mercate_logo.png',
-                    height: 72,
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.lock_outline,
-                      size: 64,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
+                  Icon(
+                    Icons.lock_outline,
+                    size: 48,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Mercate',
-                    style: Theme.of(context).textTheme.headlineSmall,
+                    'Mercate is locked',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                   ),
                   const SizedBox(height: 8),
-                  const Text('Unlock to continue'),
+                  Text(
+                    'Enter your PIN to continue',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                   const SizedBox(height: 24),
-                  if (_bioAvailable)
-                    FilledButton.icon(
-                      onPressed: _busy ? null : _tryBio,
-                      icon: const Icon(Icons.fingerprint),
-                      label: const Text('Use biometrics'),
-                    ),
-                  if (_bioAvailable) const SizedBox(height: 16),
                   TextField(
                     controller: _pinCtrl,
                     obscureText: true,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    maxLength: 12,
                     decoration: const InputDecoration(
                       labelText: 'PIN',
                       border: OutlineInputBorder(),
+                      counterText: '',
                     ),
                     onSubmitted: (_) => _submitPin(),
                   ),
                   if (_error != null) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
                       _error!,
                       style: TextStyle(
@@ -143,6 +138,10 @@ class _LockScreenState extends State<LockScreen> {
                           )
                         : const Text('Unlock with PIN'),
                   ),
+                  TextButton(
+                    onPressed: _busy ? null : _tryBio,
+                    child: const Text('Use fingerprint / face'),
+                  ),
                 ],
               ),
             ),
@@ -153,14 +152,14 @@ class _LockScreenState extends State<LockScreen> {
   }
 }
 
-Future<bool> promptPinDialog(
+/// Prompt for PIN (and optional biometric) from settings / sensitive actions.
+Future<bool> promptUnlock(
   BuildContext context, {
   String title = 'Enter PIN',
+  required SecurityService security,
 }) async {
-  final security = SecurityService();
   final ctrl = TextEditingController();
   String? error;
-
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
@@ -175,26 +174,26 @@ Future<bool> promptPinDialog(
                 TextField(
                   controller: ctrl,
                   obscureText: true,
-                  autofocus: true,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'PIN',
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
+                    errorText: error,
                   ),
                   onSubmitted: (_) async {
-                    final ok = await security.verifyPin(ctrl.text);
-                    if (ok) {
-                      if (context.mounted) Navigator.pop(context, true);
-                    } else {
-                      setLocal(() => error = 'Incorrect PIN');
+                    try {
+                      final ok = await security.verifyPin(ctrl.text);
+                      if (ok) {
+                        if (context.mounted) Navigator.pop(context, true);
+                      } else {
+                        setLocal(() => error = 'Incorrect PIN');
+                      }
+                    } catch (e) {
+                      setLocal(() => error = e.toString());
                     }
                   },
                 ),
-                if (error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(error!, style: const TextStyle(color: Colors.red)),
-                ],
               ],
             ),
             actions: [
@@ -204,14 +203,18 @@ Future<bool> promptPinDialog(
               ),
               FilledButton(
                 onPressed: () async {
-                  final ok = await security.verifyPin(ctrl.text);
-                  if (ok) {
-                    if (context.mounted) Navigator.pop(context, true);
-                  } else {
-                    setLocal(() => error = 'Incorrect PIN');
+                  try {
+                    final ok = await security.verifyPin(ctrl.text);
+                    if (ok) {
+                      if (context.mounted) Navigator.pop(context, true);
+                    } else {
+                      setLocal(() => error = 'Incorrect PIN');
+                    }
+                  } catch (e) {
+                    setLocal(() => error = e.toString());
                   }
                 },
-                child: const Text('Confirm'),
+                child: const Text('Unlock'),
               ),
             ],
           );
