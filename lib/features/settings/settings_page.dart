@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/theme_service.dart';
+import 'backup_settings_page.dart';
 import 'business_profile_page.dart';
 import 'security_settings_page.dart';
 
-/// Hub for profile, security, appearance — reachable from Home.
+/// Hub for profile, security, backup, appearance — reachable from Home.
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -40,11 +41,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _setTheme(ThemeMode mode) async {
     await ThemeService().setThemeMode(mode);
-    // Notify app-wide controller if present via Inherited — ThemeController in main listens meta; force reload
-    try {
-      // ThemeController is owned in main; settings write meta DB which load reads on next cold start.
-      // Also try to poke ThemeController via root if registered.
-    } catch (_) {}
     setState(() => _themeMode = mode);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -131,6 +127,20 @@ class _SettingsPageState extends State<SettingsPage> {
                     );
                   },
                 ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.backup_outlined),
+                  title: const Text('Data backup'),
+                  subtitle: const Text('Everyday local copy of your shop data'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const BackupSettingsPage(),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -147,9 +157,21 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.all(12),
             child: SegmentedButton<ThemeMode>(
               segments: const [
-                ButtonSegment(value: ThemeMode.light, label: Text('Light'), icon: Icon(Icons.light_mode)),
-                ButtonSegment(value: ThemeMode.dark, label: Text('Dark'), icon: Icon(Icons.dark_mode)),
-                ButtonSegment(value: ThemeMode.system, label: Text('System'), icon: Icon(Icons.phone_android)),
+                ButtonSegment(
+                  value: ThemeMode.light,
+                  label: Text('Light'),
+                  icon: Icon(Icons.light_mode),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.dark,
+                  label: Text('Dark'),
+                  icon: Icon(Icons.dark_mode),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  label: Text('System'),
+                  icon: Icon(Icons.phone_android),
+                ),
               ],
               selected: {_themeMode},
               onSelectionChanged: (s) => _setTheme(s.first),
