@@ -152,12 +152,25 @@ class _LockScreenState extends State<LockScreen> {
   }
 }
 
-/// Prompt for PIN (and optional biometric) from settings / sensitive actions.
+/// PIN prompt used by void sale, profile change, etc.
+Future<bool> promptPinDialog(
+  BuildContext context, {
+  String title = 'Enter PIN',
+  SecurityService? security,
+}) {
+  return promptUnlock(
+    context,
+    title: title,
+    security: security ?? SecurityService(),
+  );
+}
+
 Future<bool> promptUnlock(
   BuildContext context, {
   String title = 'Enter PIN',
-  required SecurityService security,
+  SecurityService? security,
 }) async {
+  final sec = security ?? SecurityService();
   final ctrl = TextEditingController();
   String? error;
   final result = await showDialog<bool>(
@@ -183,7 +196,7 @@ Future<bool> promptUnlock(
                   ),
                   onSubmitted: (_) async {
                     try {
-                      final ok = await security.verifyPin(ctrl.text);
+                      final ok = await sec.verifyPin(ctrl.text);
                       if (ok) {
                         if (context.mounted) Navigator.pop(context, true);
                       } else {
@@ -204,7 +217,7 @@ Future<bool> promptUnlock(
               FilledButton(
                 onPressed: () async {
                   try {
-                    final ok = await security.verifyPin(ctrl.text);
+                    final ok = await sec.verifyPin(ctrl.text);
                     if (ok) {
                       if (context.mounted) Navigator.pop(context, true);
                     } else {
