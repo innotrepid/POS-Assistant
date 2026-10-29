@@ -15,6 +15,7 @@ import 'features/security/lock_screen.dart';
 import 'features/settings/settings_page.dart';
 import 'features/suppliers/suppliers_page.dart';
 import 'services/alert_scanner_service.dart';
+import 'services/backup_service.dart';
 import 'services/business_profile_service.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
@@ -36,6 +37,13 @@ Future<void> main() async {
   await themeController.load();
   try {
     await SystemNotificationService.instance.init();
+  } catch (_) {}
+  // Everyday local backup (no network) — once per calendar day after shop is set up
+  try {
+    final profiles = BusinessProfileService.instance;
+    if (await profiles.hasCompletedOnboarding()) {
+      await BackupService().runDailyIfNeeded();
+    }
   } catch (_) {}
   runApp(const MercateApp());
 }
