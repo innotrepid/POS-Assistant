@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../core/database/app_database.dart';
@@ -34,6 +36,8 @@ class BackupEntry {
         '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     return '$dd $tt · $profileId';
   }
+
+  String get zipFileName => 'mercate_backup_$id.zip';
 }
 
 class BackupResult {
@@ -42,8 +46,7 @@ class BackupResult {
   const BackupResult({required this.entry, required this.message});
 }
 
-/// Local file backups of Mercate SQLite databases (meta + profile DBs).
-/// Keeps the last [keepCount] backups under the app documents folder.
+/// Local SQLite backups with zip export, system share (USB/Drive), and Downloads.
 class BackupService {
   BackupService({
     AppDatabase? database,
@@ -87,7 +90,6 @@ class BackupService {
     return names;
   }
 
-  /// Create a timestamped backup of meta + all mercate_*.db files.
   Future<BackupResult> backupNow({String reason = 'manual'}) async {
     final now = DateTime.now();
     final stamp =
@@ -159,7 +161,7 @@ class BackupService {
     );
     return BackupResult(
       entry: entry,
-      message: 'Saved ${copied.length} file(s) · ${entry.label}\n${dest.path}',
+      message: 'Saved ${copied.length} file(s) · ${entry.label}',
     );
   }
 
@@ -208,7 +210,84 @@ class BackupService {
     return entries;
   }
 
-  /// Replace live DBs with files from a backup folder.
+  /// Zip a backup folder to a temp file (for share / Downloads).
+  Future<File> zipBackup(BackupEntry entry) async {
+    final dir = Directory(entry.folderPath);
+    if (!await dir.exists()) {
+      throw StateError('Backup folder missing.');
+    }
+    final tmp = await getTemporaryDirectory();
+    final zipPath = p.join(tmp.path, entry.zipFileName);
+    final zipFile = File(zipPath);
+    if (await zipFile.exists()) {
+      await zipFile.delete();
+    }
+
+    final encoder = ZipFileEncoder();
+    encoder.create(zipPath);
+    await for (final entity in dir.list(recursive: false)) {
+      if (entity is File) {
+        encoder.addFile(entity);
+      }
+    }
+    encoder.close();
+    return File(zipPath);
+  }
+
+  /// System share sheet — Drive, Bluetooth, USB OTG, Files, WhatsApp, etc.
+  Future<void> shareBackup(BackupEntry entry) async {
+    final zip = await zipBackup(entry);
+    await Share.shareXFiles(
+      [XFile(zip.path, mimeType: 'application/zip', name: entry.zipFileName)],
+      subject: 'Mercate backup ${entry.label}',
+      text: 'Mercate shop backup · ${entry.label}',
+    );
+  }
+
+  /// Copy zip into public Downloads when possible; falls back to app folder.
+  Future<String> exportToDownloads(BackupEntry entry) async {
+    final zip = await zipBackup(entry);
+    final destDir = await _resolveDownloadsDir();
+    if (!await destDir.exists()) {
+      await destDir.create(recursive: true);
+    }
+    final destPath = p.join(destDir.path, entry.zipFileName);
+    final dest = await zip.copy(destPath);
+    return dest.path;
+  }
+
+  Future<Directory> _resolveDownloadsDir() async {
+    try {
+      final d = await getDownloadsDirectory();
+      if (d != null) return d;
+    } catch (_) {}
+
+    final publicDownload = Directory('/storage/emulated/0/Download');
+    if (await publicDownload.exists()) {
+      try {
+        final probe =
+            File(p.join(publicDownload.path, '.mercate_write_test'));
+        await probe.writeAsString('ok');
+        await probe.delete();
+        return publicDownload;
+      } catch (_) {}
+    }
+
+    try {
+      final ext = await getExternalStorageDirectory();
+      if (ext != null) {
+        final dir = Directory(p.join(ext.path, 'Downloads'));
+        if (!await dir.exists()) await dir.create(recursive: true);
+        return dir;
+      }
+    } catch (_) {}
+
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(docs.path, 'exports'));
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
   Future<void> restore(BackupEntry entry) async {
     final databasesPath = await getDatabasesPath();
     final profileId = _database.activeProfileId;
@@ -297,7 +376,6 @@ class BackupService {
     return last != today;
   }
 
-  /// Silent daily backup — safe on app start after DB is ready.
   Future<BackupResult?> runDailyIfNeeded() async {
     try {
       if (!await needsDailyBackup()) return null;
