@@ -54,6 +54,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
   }
 
   Future<void> _setPin() async {
+    final currentCtrl = TextEditingController();
     final pinCtrl = TextEditingController();
     final confirmCtrl = TextEditingController();
 
@@ -61,19 +62,34 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Set PIN'),
+          title: Text(_hasPin ? 'Change PIN' : 'Set PIN'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (_hasPin) ...[
+                TextField(
+                  controller: currentCtrl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: 'Current PIN',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLength: 12,
+                ),
+                const SizedBox(height: 12),
+              ],
               TextField(
                 controller: pinCtrl,
                 obscureText: true,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
-                  labelText: 'PIN (min 4 digits)',
+                  labelText: 'New PIN (4–12 digits)',
                   border: OutlineInputBorder(),
                 ),
+                maxLength: 12,
               ),
               const SizedBox(height: 12),
               TextField(
@@ -85,6 +101,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                   labelText: 'Confirm PIN',
                   border: OutlineInputBorder(),
                 ),
+                maxLength: 12,
               ),
             ],
           ),
@@ -108,7 +125,10 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
       if (pinCtrl.text != confirmCtrl.text) {
         throw ArgumentError('PINs do not match.');
       }
-      await _security.setPin(pinCtrl.text);
+      await _security.setPin(
+        pinCtrl.text,
+        currentPin: _hasPin ? currentCtrl.text : null,
+      );
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -136,67 +156,11 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text('PIN & security')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                const ListTile(
-                  title: Text('Appearance'),
-                  subtitle: Text('Glass UI · teal accent'),
-                ),
-                ListenableBuilder(
-                  listenable: themeController,
-                  builder: (context, _) {
-                    final mode = themeController.mode;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      child: SegmentedButton<ThemeMode>(
-                        segments: const [
-                          ButtonSegment(
-                            value: ThemeMode.system,
-                            label: Text('System'),
-                            icon: Icon(Icons.brightness_auto, size: 18),
-                          ),
-                          ButtonSegment(
-                            value: ThemeMode.light,
-                            label: Text('Light'),
-                            icon: Icon(Icons.light_mode, size: 18),
-                          ),
-                          ButtonSegment(
-                            value: ThemeMode.dark,
-                            label: Text('Dark'),
-                            icon: Icon(Icons.dark_mode, size: 18),
-                          ),
-                        ],
-                        selected: {mode},
-                        onSelectionChanged: (set) {
-                          themeController.setMode(set.first);
-                        },
-                      ),
-                    );
-                  },
-                ),
-                ListenableBuilder(
-                  listenable: themeController,
-                  builder: (context, _) {
-                    return ListTile(
-                      title: const Text('Theme'),
-                      subtitle: Text(_themeLabel(themeController.mode)),
-                      trailing: Icon(
-                        themeController.mode == ThemeMode.dark
-                            ? Icons.dark_mode
-                            : themeController.mode == ThemeMode.light
-                                ? Icons.light_mode
-                                : Icons.brightness_auto,
-                      ),
-                    );
-                  },
-                ),
-                const Divider(),
                 const ListTile(
                   title: Text('App lock'),
                   subtitle: Text(
@@ -226,6 +190,9 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                 ),
                 ListTile(
                   title: Text(_hasPin ? 'Change PIN' : 'Set PIN'),
+                  subtitle: _hasPin
+                      ? const Text('Requires your current PIN')
+                      : null,
                   trailing: const Icon(Icons.pin),
                   onTap: _setPin,
                 ),
@@ -307,19 +274,6 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                       },
                     ),
                   ),
-                ),
-                const Divider(),
-                ListTile(
-                  title: const Text('View licenses'),
-                  subtitle: const Text('Open-source software notices'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    showLicensePage(
-                      context: context,
-                      applicationName: 'Mercate',
-                      applicationVersion: '0.1.0',
-                    );
-                  },
                 ),
               ],
             ),
