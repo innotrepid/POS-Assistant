@@ -62,6 +62,13 @@ jobs:
             fi
           done
           MANIFEST="android/app/src/main/AndroidManifest.xml"
+          # Flutter plugins (local_auth, notifications) need a modern minSdk
+          for f in android/app/build.gradle android/app/build.gradle.kts; do
+            if [ -f "$f" ]; then
+              sed -i 's/minSdk *= *.*/minSdk = 24/' "$f" || true
+              sed -i 's/minSdkVersion *.*/minSdkVersion 24/' "$f" || true
+            fi
+          done
           if [ -f "$MANIFEST" ]; then
             sed -i 's/android:label="[^"]*"/android:label="Mercate"/' "$MANIFEST"
             grep -q "USE_BIOMETRIC" "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>' "$MANIFEST"
