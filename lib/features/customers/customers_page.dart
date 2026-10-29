@@ -163,7 +163,7 @@ class _CustomersPageState extends State<CustomersPage> {
                   children: [
                     if (_debtorCount > 0)
                       Material(
-                        color: scheme.errorContainer.withValues(alpha: 0.35),
+                        color: scheme.errorContainer.withOpacity(0.35),
                         child: ListTile(
                           leading: Icon(
                             Icons.account_balance_wallet_outlined,

@@ -5,15 +5,20 @@ void main() {
   group('AssistantService', () {
     test('explains how the app works', () async {
       final service = AssistantService();
-      final reply = await service.reply('How does this app work?');
-      expect(reply.toLowerCase(), contains('mercate'));
+      final reply = await service.ask('How does this app work?');
+      expect(reply.text.toLowerCase(), contains('mercate'));
     });
 
-    test('answers who owes me with empty debtors', () async {
+    test('answers who owes me without crashing', () async {
       final service = AssistantService();
-      // May talk about debtors / deni without crashing when DB is empty in unit context.
-      final reply = await service.reply('Who owes me?');
-      expect(reply, isNotEmpty);
+      final reply = await service.ask('Who owes me?');
+      expect(reply.text, isNotEmpty);
+    });
+
+    test('empty query returns guidance', () async {
+      final service = AssistantService();
+      final reply = await service.ask('');
+      expect(reply.text, isNotEmpty);
     });
   });
 }
