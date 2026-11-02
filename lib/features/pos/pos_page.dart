@@ -4,6 +4,7 @@ import '../../core/models/product.dart';
 import '../../core/utils/money.dart';
 import '../../services/inventory_service.dart';
 import '../../services/locale_service.dart';
+import '../../services/sales_service.dart';
 import 'cart_controller.dart';
 import 'checkout_sheet.dart';
 import 'sales_history_page.dart';
@@ -24,6 +25,7 @@ class PosPage extends StatefulWidget {
 
 class _PosPageState extends State<PosPage> {
   final _inventory = InventoryService();
+  final _sales = SalesService();
   final _cart = CartController();
   final _searchCtrl = TextEditingController();
 
@@ -144,12 +146,15 @@ class _PosPageState extends State<PosPage> {
 
   Future<void> _checkout() async {
     if (_cart.lines.isEmpty) return;
-    final done = await showModalBottomSheet<bool>(
+    final done = await showModalBottomSheet<CheckoutResult>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => CheckoutSheet(cart: _cart),
+      builder: (_) => CheckoutSheet(
+        cart: _cart,
+        salesService: _sales,
+      ),
     );
-    if (done == true) {
+    if (done != null) {
       _cart.clear();
       await _load();
     }
