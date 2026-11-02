@@ -87,15 +87,36 @@ class _DayClosePageState extends State<DayClosePage> {
       return;
     }
 
-    final unlocked = await _security.requireUnlock(
-      biometricReason: 'Confirm close day',
-      promptPin: () => promptPinDialog(
+    // Always require PIN when one is set (even if "require unlock on open" is off).
+    if (await _security.hasPin()) {
+      final pinOk = await promptPinDialog(
         context,
         title: 'PIN to close day',
         security: _security,
-      ),
-    );
-    if (!unlocked || !mounted) return;
+      );
+      if (!pinOk || !mounted) return;
+    } else {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('No PIN set'),
+          content: const Text(
+            'Closing without a PIN is less safe. Set a PIN in Settings when you can. Close anyway?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Close day'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
 
     setState(() => _busy = true);
     try {
@@ -168,8 +189,6 @@ class _DayClosePageState extends State<DayClosePage> {
                               ),
                         ),
                         const SizedBox(height: 16),
-
-                        // Summary cards
                         Card(
                           child: Padding(
                             padding: const EdgeInsets.all(16),
@@ -216,8 +235,6 @@ class _DayClosePageState extends State<DayClosePage> {
                           ),
                         ),
                         const SizedBox(height: 12),
-
-                        // Hourly graph
                         Card(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
@@ -259,8 +276,6 @@ class _DayClosePageState extends State<DayClosePage> {
                           ),
                         ),
                         const SizedBox(height: 12),
-
-                        // Top items
                         if (_topItems.isNotEmpty)
                           Card(
                             child: Padding(
@@ -299,7 +314,6 @@ class _DayClosePageState extends State<DayClosePage> {
                               ),
                             ),
                           ),
-
                         if (!s.isClosed) ...[
                           const SizedBox(height: 16),
                           Text(
@@ -436,8 +450,9 @@ class _HourlyBarChart extends StatelessWidget {
                             message:
                                 '${b.label}: ${Money.format(b.salesTotal)} (${b.saleCount})',
                             child: FractionallySizedBox(
-                              heightFactor:
-                                  maxV <= 0 ? 0.02 : (b.salesTotal / scale).clamp(0.02, 1.0),
+                              heightFactor: maxV <= 0
+                                  ? 0.02
+                                  : (b.salesTotal / scale).clamp(0.02, 1.0),
                               widthFactor: 1,
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
