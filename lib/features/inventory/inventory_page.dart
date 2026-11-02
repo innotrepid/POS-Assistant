@@ -90,18 +90,25 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Future<void> _deleteProduct(Product product) async {
     final qty = _stock[product.id] ?? 0;
+    final buffer = StringBuffer()
+      ..writeln('Remove "${product.name}" from stock and sales?')
+      ..writeln()
+      ..writeln('• It will no longer appear in Stock or POS')
+      ..writeln('• Past sales and reports stay for history');
+    if (qty > 0) {
+      buffer.writeln(
+        '• Current quantity on hand: ${_fmtQty(qty)} ${product.unit}',
+      );
+    }
+    buffer
+      ..writeln()
+      ..write('You can add it again later (including from the starter list).');
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete product?'),
-        content: Text(
-          'Remove "${product.name}" from stock and sales?
-\n'
-          '• It will no longer appear in Stock or POS\n'
-          '• Past sales and reports stay for history\n'
-          '${qty > 0 ? '• Current quantity on hand: ${_fmtQty(qty)} ${product.unit}\n' : ''}'
-          '\nYou can add it again later (including from the starter list).',
-        ),
+        content: Text(buffer.toString()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -224,7 +231,6 @@ class _InventoryPageState extends State<InventoryPage> {
     );
 
     if (ok == null) {
-      // Delete pressed in dialog
       await _deleteProduct(product);
       return;
     }
@@ -691,12 +697,12 @@ class _InventoryPageState extends State<InventoryPage> {
                                   if (value == 'edit') _editProduct(p);
                                   if (value == 'delete') _deleteProduct(p);
                                 },
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
                                     value: 'edit',
                                     child: Text('Edit'),
                                   ),
-                                  const PopupMenuItem(
+                                  PopupMenuItem(
                                     value: 'delete',
                                     child: Text('Delete'),
                                   ),
