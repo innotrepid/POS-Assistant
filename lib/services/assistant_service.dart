@@ -76,12 +76,15 @@ class AssistantService {
   static const List<String> suggestions = [
     'How did I do today?',
     'What did I sell today?',
+    'This week sales',
+    'This month trend',
+    'How is business doing?',
+    'Best day this week',
+    'Busy hours today',
     'Who owes me?',
     'Who is overdue?',
     'Who promised to pay today?',
     'Recent calls',
-    'Call log today',
-    'Best sellers',
     'Low stock',
   ];
 
@@ -114,15 +117,17 @@ class AssistantService {
     final q = raw.trim().toLowerCase();
     if (q.isEmpty) {
       return const AssistantReply(
-        'Ask about sales, debt, stock, or who owes you.\n'
-        'Try: Call Mary · Called Mary, no answer · Recent calls',
+        'Ask about sales, trends, debt, stock, or who owes you.\n'
+        'Try: This week · How is business · Call Mary · Low stock',
       );
     }
 
     if (_matches(q, ['how does', 'how do i', 'help', 'guide', 'what can you'])) {
       return const AssistantReply(
-        'I summarise sales and debt offline. I can open Call/SMS with your OK, '
-        'log how the call went, and save promises. Money changes need Confirm.',
+        'Mercate Assistant works offline on your shop data.\n'
+        'Ask about today, this week, this month, busy hours, debt, and stock.\n'
+        'I can open Call/SMS with your OK, log outcomes, and save promises.\n'
+        'Money changes always need Confirm.',
       );
     }
 
@@ -143,6 +148,32 @@ class AssistantService {
     final write = await _tryWriteIntent(q);
     if (write != null) return write;
 
+    if (_matches(q, [
+      'this week',
+      'week sales',
+      'weekly',
+      'this month',
+      'month sales',
+      'monthly',
+      'last 30',
+      '30 days',
+      'trend',
+      'trends',
+      'how is business',
+      'business doing',
+      'how am i doing',
+      'compare week',
+      'best day',
+      'worst day',
+      'busy hours',
+      'peak hours',
+      'slow hours',
+      'predict',
+      'outlook',
+      'forecast',
+    ])) {
+      return AssistantReply(await _trendsBrief(q));
+    }
     if (_matches(q, ['how did i do', 'daily brief', 'summary today'])) {
       return AssistantReply(await _dailyBrief());
     }
@@ -160,7 +191,7 @@ class AssistantService {
     }
 
     return const AssistantReply(
-      'Try: "Who owes me?", "Call Mary", "Called Mary, no answer", "Recent calls".',
+      'Try: "This week", "How is business?", "Busy hours", "Who owes me?", "Call Mary".',
     );
   }
 
@@ -474,6 +505,167 @@ class AssistantService {
       if (q.contains(k)) return true;
     }
     return false;
+  }
+
+  /// Rule-based trends from weekly / monthly aggregates (no ML model).
+  Future<String> _trendsBrief(String q) async {
+    final wantHours = _matches(q, ['busy hours', 'peak hours', 'slow hours', 'hour']);
+    final wantMonth = _matches(q, ['month', '30 days', 'last 30', 'monthly']);
+    final wantWeek = _matches(q, ['week', 'weekly']) || !wantMonth;
+
+    if (wantHours) {
+      return await _busyHoursBrief();
+    }
+
+    final week = await _reports.thisWeekSeries();
+    final month = await _reports.last30DaysSeries();
+    final today = await _reports.daySales();
+
+    final buf = StringBuffer();
+
+    if (wantWeek || !wantMonth) {
+      buf.writeln(_formatSeriesInsight(
+        week,
+        comparePrevious: true,
+      ));
+      buf.writeln();
+    }
+    if (wantMonth) {
+      buf.writeln(_formatSeriesInsight(month, comparePrevious: false));
+      buf.writeln();
+    }
+
+    final outlook = _simpleOutlook(month);
+    if (outlook != null) {
+      buf.writeln(outlook);
+      buf.writeln();
+    }
+
+    buf.writeln(
+      'Today so far: ${Money.format(today.salesTotal)} '
+      '(${today.saleCount} sales).',
+    );
+    buf.write(
+      '\nTip: open Reports → Trends for graphs. '
+      'These notes use your saved sales only — not a prediction model.',
+    );
+    return buf.toString().trim();
+  }
+
+  Future<String> _busyHoursBrief() async {
+    final hours = await _reports.salesByHour();
+    final withSales = hours.where((h) => h.salesTotal > 0).toList();
+    if (withSales.isEmpty) {
+      return 'No sales recorded by hour yet today. '
+          'After a few sales, ask again for busy hours.';
+    }
+    withSales.sort((a, b) => b.salesTotal.compareTo(a.salesTotal));
+    final top = withSales.take(3).toList();
+    final slow = [...withSales]..sort((a, b) => a.salesTotal.compareTo(b.salesTotal));
+    final buf = StringBuffer('Busy hours today:\n');
+    for (final h in top) {
+      buf.writeln(
+        '• ${h.label}: ${Money.format(h.salesTotal)} (${h.saleCount})',
+      );
+    }
+    if (slow.isNotEmpty && slow.first.hour != top.first.hour) {
+      buf.writeln(
+        '\nQuieter: ${slow.first.label} '
+        '(${Money.format(slow.first.salesTotal)}).',
+      );
+    }
+    buf.write(
+      '\nPlan stock and change for the busy slots. '
+      'Based on today only.',
+    );
+    return buf.toString().trim();
+  }
+
+  String _formatSeriesInsight(PeriodSeries series, {required bool comparePrevious}) {
+    final buf = StringBuffer('${series.title}\n');
+    buf.writeln(
+      '• Sales ${Money.format(series.salesTotal)} · '
+      '${series.saleCount} sales · '
+      'Gross ~${Money.format(series.grossProfit)}',
+    );
+    if (series.expensesTotal > 0) {
+      buf.writeln('• Expenses ${Money.format(series.expensesTotal)}');
+    }
+
+    final active = series.days.where((d) => d.salesTotal > 0 || d.saleCount > 0).toList();
+    if (active.isEmpty) {
+      buf.write('• No sales in this period yet.');
+      return buf.toString();
+    }
+
+    final best = active.reduce(
+      (a, b) => a.salesTotal >= b.salesTotal ? a : b,
+    );
+    final worst = active.reduce(
+      (a, b) => a.salesTotal <= b.salesTotal ? a : b,
+    );
+    final avg = series.salesTotal / series.days.length;
+    buf.writeln(
+      '• Daily average ${Money.format(avg)} '
+      '(across ${series.days.length} days)',
+    );
+    buf.writeln(
+      '• Best: ${best.shortLabel} ${best.businessDate} '
+      '— ${Money.format(best.salesTotal)}',
+    );
+    if (worst.businessDate != best.businessDate) {
+      buf.writeln(
+        '• Softest: ${worst.shortLabel} ${worst.businessDate} '
+        '— ${Money.format(worst.salesTotal)}',
+      );
+    }
+
+    if (comparePrevious && series.days.length >= 4) {
+      final half = series.days.length ~/ 2;
+      final first = series.days.sublist(0, half);
+      final second = series.days.sublist(half);
+      final a = first.fold<double>(0, (s, d) => s + d.salesTotal);
+      final b = second.fold<double>(0, (s, d) => s + d.salesTotal);
+      if (a > 0.5 || b > 0.5) {
+        final delta = b - a;
+        final pct = a > 0.5 ? (delta / a) * 100 : 0.0;
+        final dir = delta >= 0 ? 'up' : 'down';
+        buf.writeln(
+          '• Second half vs first half: $dir '
+          '${Money.format(delta.abs())}'
+          '${a > 0.5 ? ' (${pct.abs().toStringAsFixed(0)}%)' : ''}',
+        );
+      }
+    }
+    return buf.toString().trim();
+  }
+
+  /// Very light outlook from recent vs earlier days in a series.
+  String? _simpleOutlook(PeriodSeries series) {
+    if (series.days.length < 7) return null;
+    final recent = series.days.sublist(series.days.length - 3);
+    final earlier = series.days.sublist(0, series.days.length - 3);
+    final rAvg = recent.fold<double>(0, (s, d) => s + d.salesTotal) / recent.length;
+    final eAvg = earlier.fold<double>(0, (s, d) => s + d.salesTotal) / earlier.length;
+    if (eAvg < 1 && rAvg < 1) return null;
+
+    if (eAvg < 1) {
+      return 'Outlook: sales picked up in the last 3 days '
+          '(avg ${Money.format(rAvg)}/day). Keep the same stock rhythm.';
+    }
+    final pct = ((rAvg - eAvg) / eAvg) * 100;
+    if (pct >= 15) {
+      return 'Outlook: last 3 days are stronger than earlier '
+          '(about ${pct.toStringAsFixed(0)}% higher avg). '
+          'Watch stock on your top sellers.';
+    }
+    if (pct <= -15) {
+      return 'Outlook: last 3 days are softer than earlier '
+          '(about ${pct.abs().toStringAsFixed(0)}% lower avg). '
+          'Check debt collections and busy hours.';
+    }
+    return 'Outlook: last 3 days are similar to earlier in the period '
+        '(avg ${Money.format(rAvg)}/day). Steady trade.';
   }
 
   Future<String> _dailyBrief() async {
