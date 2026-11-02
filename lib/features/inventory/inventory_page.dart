@@ -70,7 +70,16 @@ class _InventoryPageState extends State<InventoryPage> {
     final units = profile.suggestedUnits.isEmpty
         ? <String>[profile.defaultUnit as String]
         : List<String>.from(profile.suggestedUnits as List);
-    for (final extra in ['debe', 'gorogoro', 'kg', 'bunch', 'piece', 'head', 'pack', 'tray']) {
+    for (final extra in [
+      'debe',
+      'gorogoro',
+      'kg',
+      'bunch',
+      'piece',
+      'head',
+      'pack',
+      'tray',
+    ]) {
       if (!units.contains(extra)) units.add(extra);
     }
     if (current != null && current.isNotEmpty && !units.contains(current)) {
@@ -79,11 +88,61 @@ class _InventoryPageState extends State<InventoryPage> {
     return units;
   }
 
+  Future<void> _deleteProduct(Product product) async {
+    final qty = _stock[product.id] ?? 0;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete product?'),
+        content: Text(
+          'Remove "${product.name}" from stock and sales?
+\n'
+          '• It will no longer appear in Stock or POS\n'
+          '• Past sales and reports stay for history\n'
+          '${qty > 0 ? '• Current quantity on hand: ${_fmtQty(qty)} ${product.unit}\n' : ''}'
+          '\nYou can add it again later (including from the starter list).',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _inventory.deleteProduct(
+        product.id,
+        reason: 'Removed from stock list by user',
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${product.name} removed')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
+    }
+  }
+
   Future<void> _editProduct(Product product) async {
     final profile = await _profiles.getProfile();
     final nameCtrl = TextEditingController(text: product.name);
-    final priceCtrl = TextEditingController(text: product.sellingPrice.toString());
-    final costCtrl = TextEditingController(text: product.costPrice?.toString() ?? '');
+    final priceCtrl =
+        TextEditingController(text: product.sellingPrice.toString());
+    final costCtrl =
+        TextEditingController(text: product.costPrice?.toString() ?? '');
     final units = _unitsFor(profile, current: product.unit);
     var selectedUnit = product.unit;
 
@@ -99,21 +158,31 @@ class _InventoryPageState extends State<InventoryPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Name'),
+                    ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: priceCtrl,
-                      decoration: const InputDecoration(labelText: 'Selling price'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'Selling price'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: costCtrl,
-                      decoration: const InputDecoration(labelText: 'Cost (optional)'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'Cost (optional)'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                     ),
                     const SizedBox(height: 12),
-                    Text('Unit (kg, debe/gorogoro, bunch…)', style: Theme.of(context).textTheme.labelLarge),
+                    Text(
+                      'Unit (kg, debe/gorogoro, bunch…)',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
@@ -123,7 +192,8 @@ class _InventoryPageState extends State<InventoryPage> {
                           ChoiceChip(
                             label: Text(u),
                             selected: selectedUnit == u,
-                            onSelected: (_) => setLocal(() => selectedUnit = u),
+                            onSelected: (_) =>
+                                setLocal(() => selectedUnit = u),
                           ),
                       ],
                     ),
@@ -131,29 +201,56 @@ class _InventoryPageState extends State<InventoryPage> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                  child: const Text('Delete'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save'),
+                ),
               ],
             );
           },
         );
       },
     );
+
+    if (ok == null) {
+      // Delete pressed in dialog
+      await _deleteProduct(product);
+      return;
+    }
     if (ok != true || !mounted) return;
     try {
-      await _inventory.updateProduct(product.copyWith(
-        name: nameCtrl.text.trim(),
-        sellingPrice: Money.parse(priceCtrl.text),
-        costPrice: costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
-        unit: selectedUnit,
-        updatedAt: DateTime.now(),
-      ));
+      await _inventory.updateProduct(
+        product.copyWith(
+          name: nameCtrl.text.trim(),
+          sellingPrice: Money.parse(priceCtrl.text),
+          costPrice: costCtrl.text.trim().isEmpty
+              ? null
+              : Money.parse(costCtrl.text),
+          unit: selectedUnit,
+          updatedAt: DateTime.now(),
+        ),
+      );
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product updated')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Product updated')),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
     }
   }
 
@@ -173,7 +270,9 @@ class _InventoryPageState extends State<InventoryPage> {
       if (n > 0) await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
     }
   }
 
@@ -193,8 +292,10 @@ class _InventoryPageState extends State<InventoryPage> {
               children: [
                 TextField(
                   controller: qtyCtrl,
-                  decoration: InputDecoration(labelText: 'Quantity (${product.unit})'),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration:
+                      InputDecoration(labelText: 'Quantity (${product.unit})'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   autofocus: true,
                 ),
                 const SizedBox(height: 12),
@@ -214,14 +315,23 @@ class _InventoryPageState extends State<InventoryPage> {
                 ),
                 if (reason == 'Other') ...[
                   const SizedBox(height: 12),
-                  TextField(controller: otherCtrl, decoration: const InputDecoration(labelText: 'Describe')),
+                  TextField(
+                    controller: otherCtrl,
+                    decoration: const InputDecoration(labelText: 'Describe'),
+                  ),
                 ],
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Record')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Record'),
+            ),
           ],
         ),
       ),
@@ -235,16 +345,22 @@ class _InventoryPageState extends State<InventoryPage> {
         reason: why.isEmpty ? 'Other' : why,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Spoilage recorded for ${product.name}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Spoilage recorded for ${product.name}')),
+      );
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
     }
   }
 
   Future<void> _openReceiveGoods() async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ReceivePurchasePage()));
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const ReceivePurchasePage()),
+    );
     _load();
   }
 
@@ -270,18 +386,26 @@ class _InventoryPageState extends State<InventoryPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name'), autofocus: true),
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Name'),
+                      autofocus: true,
+                    ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: priceCtrl,
-                      decoration: const InputDecoration(labelText: 'Selling price'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'Selling price'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: costCtrl,
-                      decoration: const InputDecoration(labelText: 'Cost (optional)'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'Cost (optional)'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                     ),
                     const SizedBox(height: 12),
                     Text('Unit', style: Theme.of(context).textTheme.labelLarge),
@@ -294,7 +418,8 @@ class _InventoryPageState extends State<InventoryPage> {
                           ChoiceChip(
                             label: Text(u),
                             selected: selectedUnit == u,
-                            onSelected: (_) => setLocal(() => selectedUnit = u),
+                            onSelected: (_) =>
+                                setLocal(() => selectedUnit = u),
                           ),
                       ],
                     ),
@@ -306,14 +431,21 @@ class _InventoryPageState extends State<InventoryPage> {
                         helperText: 'e.g. 2 $selectedUnit',
                         border: const OutlineInputBorder(),
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                     ),
                   ],
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save'),
+                ),
               ],
             );
           },
@@ -325,7 +457,9 @@ class _InventoryPageState extends State<InventoryPage> {
       final product = await _inventory.createProduct(
         name: nameCtrl.text.trim(),
         sellingPrice: Money.parse(priceCtrl.text),
-        costPrice: costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
+        costPrice: costCtrl.text.trim().isEmpty
+            ? null
+            : Money.parse(costCtrl.text),
         unit: selectedUnit,
       );
       final opening = Money.parse(qtyCtrl.text);
@@ -333,7 +467,9 @@ class _InventoryPageState extends State<InventoryPage> {
         await _inventory.addStock(
           productId: product.id,
           quantity: opening,
-          unitCost: costCtrl.text.trim().isEmpty ? null : Money.parse(costCtrl.text),
+          unitCost: costCtrl.text.trim().isEmpty
+              ? null
+              : Money.parse(costCtrl.text),
           movementType: 'opening_stock',
           reason: 'Opening stock on product create',
         );
@@ -341,13 +477,16 @@ class _InventoryPageState extends State<InventoryPage> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
 
   Future<void> _manualAddStock(Product product) async {
     final qtyController = TextEditingController(text: '1');
-    final costController = TextEditingController(text: product.costPrice?.toString() ?? '');
+    final costController =
+        TextEditingController(text: product.costPrice?.toString() ?? '');
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -357,21 +496,31 @@ class _InventoryPageState extends State<InventoryPage> {
           children: [
             TextField(
               controller: qtyController,
-              decoration: InputDecoration(labelText: 'Quantity (${product.unit})'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration:
+                  InputDecoration(labelText: 'Quantity (${product.unit})'),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               autofocus: true,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: costController,
-              decoration: const InputDecoration(labelText: 'Unit cost (optional)'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration:
+                  const InputDecoration(labelText: 'Unit cost (optional)'),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Add'),
+          ),
         ],
       ),
     );
@@ -380,12 +529,16 @@ class _InventoryPageState extends State<InventoryPage> {
       await _inventory.restockBoughtToday(
         productId: product.id,
         quantity: Money.parse(qtyController.text),
-        unitCost: costController.text.trim().isEmpty ? null : Money.parse(costController.text),
+        unitCost: costController.text.trim().isEmpty
+            ? null
+            : Money.parse(costController.text),
       );
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
 
@@ -400,8 +553,14 @@ class _InventoryPageState extends State<InventoryPage> {
         title: Text('Add stock · ${product.name}'),
         content: const Text('How did the stock arrive?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, 'manual'), child: const Text('Bought today')),
-          FilledButton(onPressed: () => Navigator.pop(context, 'supplier'), child: const Text('From supplier')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'manual'),
+            child: const Text('Bought today'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'supplier'),
+            child: const Text('From supplier'),
+          ),
         ],
       ),
     );
@@ -410,6 +569,11 @@ class _InventoryPageState extends State<InventoryPage> {
       return;
     }
     if (choice == 'manual') await _manualAddStock(product);
+  }
+
+  String _fmtQty(double q) {
+    if (q == q.roundToDouble()) return q.toInt().toString();
+    return q.toStringAsFixed(1);
   }
 
   @override
@@ -455,7 +619,12 @@ class _InventoryPageState extends State<InventoryPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center)))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_error!, textAlign: TextAlign.center),
+                  ),
+                )
               : _products.isEmpty
                   ? Center(
                       child: Padding(
@@ -484,13 +653,20 @@ class _InventoryPageState extends State<InventoryPage> {
                       itemBuilder: (context, index) {
                         final p = _products[index];
                         final qty = _stock[p.id] ?? 0;
-                        final low = p.minimumStock > 0 && qty <= p.minimumStock;
+                        final low =
+                            p.minimumStock > 0 && qty <= p.minimumStock;
                         return ListTile(
                           onTap: () => _editProduct(p),
-                          title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          onLongPress: () => _deleteProduct(p),
+                          title: Text(
+                            p.name,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                           subtitle: Text(
                             '${Money.format(p.sellingPrice)} · $qty ${p.unit}${low ? ' · LOW' : ''}',
-                            style: TextStyle(color: low ? scheme.error : null),
+                            style: TextStyle(
+                              color: low ? scheme.error : null,
+                            ),
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -502,10 +678,30 @@ class _InventoryPageState extends State<InventoryPage> {
                               ),
                               if (qty > 0)
                                 IconButton(
-                                  icon: Icon(Icons.eco_outlined, color: scheme.error),
+                                  icon: Icon(
+                                    Icons.eco_outlined,
+                                    color: scheme.error,
+                                  ),
                                   tooltip: 'Spoilage',
                                   onPressed: () => _spoilage(p),
                                 ),
+                              PopupMenuButton<String>(
+                                tooltip: 'More',
+                                onSelected: (value) {
+                                  if (value == 'edit') _editProduct(p);
+                                  if (value == 'delete') _deleteProduct(p);
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'edit',
+                                    child: Text('Edit'),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    child: Text('Delete'),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         );
