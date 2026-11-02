@@ -4,6 +4,7 @@ import '../../core/models/customer.dart';
 import '../../core/safety/safety_dialogs.dart';
 import '../../core/utils/money.dart';
 import '../../services/debtor_service.dart';
+import '../../services/locale_service.dart';
 import '../../services/sales_service.dart';
 import 'cart_controller.dart';
 import 'customer_picker_sheet.dart';
@@ -171,6 +172,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Future<List<PaymentInput>> _buildPayments() async {
+    final loc = localeController.s;
     if (_splitMode) {
       final payments = <PaymentInput>[];
       for (final leg in _legs) {
@@ -188,10 +190,13 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           if (dup) {
             final ok = await showSafetyWarning(
               context,
-              title: 'Duplicate reference',
-              whatHappened: 'Reference "$ref" was used on a previous payment.',
-              whyItMatters:
-                  'Duplicate M-Pesa/bank references may mean a double-recorded payment.',
+              title: loc.duplicateReference,
+              whatHappened: localeController.isSwahili
+                  ? 'Rejea "$ref" ilitumika kwenye malipo yaliyopita.'
+                  : 'Reference "$ref" was used on a previous payment.',
+              whyItMatters: localeController.isSwahili
+                  ? 'Rejea zinazojirudia zinaweza kumaanisha malipo yaliyorekodiwa mara mbili.'
+                  : 'Duplicate M-Pesa/bank references may mean a double-recorded payment.',
               affected: ref,
               level: SafetyLevel.caution,
             );
@@ -209,7 +214,11 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         );
       }
       if (payments.isEmpty) {
-        throw ArgumentError('Add at least one payment with amount > 0.');
+        throw ArgumentError(
+          localeController.isSwahili
+              ? 'Ongeza angalau malipo moja yenye kiasi > 0.'
+              : 'Add at least one payment with amount > 0.',
+        );
       }
       return payments;
     }
@@ -225,10 +234,13 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       if (dup) {
         final ok = await showSafetyWarning(
           context,
-          title: 'Duplicate reference',
-          whatHappened: 'Reference "$ref" was used on a previous payment.',
-          whyItMatters:
-              'Duplicate M-Pesa/bank references may mean a double-recorded payment.',
+          title: loc.duplicateReference,
+          whatHappened: localeController.isSwahili
+              ? 'Rejea "$ref" ilitumika kwenye malipo yaliyopita.'
+              : 'Reference "$ref" was used on a previous payment.',
+          whyItMatters: localeController.isSwahili
+              ? 'Rejea zinazojirudia zinaweza kumaanisha malipo yaliyorekodiwa mara mbili.'
+              : 'Duplicate M-Pesa/bank references may mean a double-recorded payment.',
           affected: ref,
           level: SafetyLevel.caution,
         );
@@ -272,6 +284,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Future<void> _submit() async {
+    final loc = localeController.s;
     setState(() {
       _submitting = true;
       _error = null;
@@ -288,16 +301,13 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           );
         }
         if (_splitRemaining > 0.001 && _customer == null) {
-          throw ArgumentError(
-            'Split is short by ${Money.format(_splitRemaining)}. '
-            'Pay the rest, or select a customer to put the remainder on credit.',
-          );
+          throw ArgumentError(loc.selectCustomerCredit);
         }
       }
 
       if ((_isCredit || (_splitMode && _splitRemaining > 0.001)) &&
           _customer == null) {
-        throw ArgumentError('Select a customer for credit / remaining balance.');
+        throw ArgumentError(loc.selectCustomerCredit);
       }
 
       final payments = await _buildPayments();
@@ -338,11 +348,13 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         final critical = w.contains('BELOW COST') || w.contains('DEBT');
         final ok = await showSafetyWarning(
           context,
-          title: critical ? 'Risk warning' : 'Please confirm',
+          title: critical ? loc.riskWarning : loc.pleaseConfirm,
           whatHappened: w,
           whyItMatters: critical
-              ? 'This affects profit or customer debt. Proceed only if intentional.'
-              : 'Confirm you understand this adjustment.',
+              ? (localeController.isSwahili
+                  ? 'Hii inaathiri faida au deni la mteja. Endelea tu kama umekusudia.'
+                  : 'This affects profit or customer debt. Proceed only if intentional.')
+              : loc.confirmAdjustment,
           level: critical ? SafetyLevel.critical : SafetyLevel.caution,
         );
         if (!ok) {
@@ -353,24 +365,24 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       }
 
       final confirmLines = <String>[
-        'Subtotal ${Money.format(_subtotal)}',
+        '${loc.subtotal} ${Money.format(_subtotal)}',
         if (discount > 0) 'Discount -${Money.format(discount)}',
-        'Total ${Money.format(_total)}',
+        '${loc.total} ${Money.format(_total)}',
         if (_splitMode) ...[
-          'Split payments:',
+          loc.splitPayments,
           for (final leg in _legs)
             if (Money.parse(leg.amountCtrl.text) > 0)
               '  ${leg.type.toUpperCase()} '
                   '${Money.format(Money.parse(leg.amountCtrl.text))}'
                   '${leg.refCtrl.text.trim().isEmpty ? '' : ' · ${leg.refCtrl.text.trim()}'}',
           if (_splitRemaining > 0.001)
-            'Remainder on credit ${Money.format(_splitRemaining)}',
+            '${loc.restBecomesDebt} ${Money.format(_splitRemaining)}',
         ] else ...[
           'Payment ${_paymentType.toUpperCase()}',
           if (_paymentType == 'cash')
-            'Tendered ${Money.format(Money.parse(_tenderedController.text))}',
+            '${loc.cashReceived} ${Money.format(Money.parse(_tenderedController.text))}',
           if (_change > 0) 'Change ${Money.format(_change)}',
-          if (_isCredit) 'Credit / debt sale',
+          if (_isCredit) loc.creditDebtSale,
         ],
         if (_customer != null) 'Customer ${_customer!.name}',
         if (existingBalance != null && existingBalance > 0)
@@ -418,6 +430,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = localeController.s;
     final bottom = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
@@ -428,15 +441,15 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Checkout', style: Theme.of(context).textTheme.titleLarge),
+            Text(loc.checkout, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text('Subtotal ${Money.format(_subtotal)}'),
+            Text('${loc.subtotal} ${Money.format(_subtotal)}'),
             const SizedBox(height: 12),
             TextField(
               controller: _discountController,
-              decoration: const InputDecoration(
-                labelText: 'Sale discount (amount)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: loc.saleDiscount,
+                border: const OutlineInputBorder(),
               ),
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
@@ -449,7 +462,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Total ${Money.format(_total)}',
+              '${loc.total} ${Money.format(_total)}',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 16),
@@ -459,12 +472,22 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               children: [
                 for (final type in ['cash', 'mpesa', 'card', 'bank', 'credit'])
                   ChoiceChip(
-                    label: Text(type.toUpperCase()),
+                    label: Text(
+                      type == 'cash'
+                          ? loc.cash
+                          : type == 'mpesa'
+                              ? loc.mpesa
+                              : type == 'card'
+                                  ? loc.card
+                                  : type == 'bank'
+                                      ? loc.bank
+                                      : loc.creditDebtSale,
+                    ),
                     selected: !_splitMode && _paymentType == type,
                     onSelected: (_) => _exitSplitMode(type),
                   ),
                 ChoiceChip(
-                  label: const Text('SPLIT'),
+                  label: Text(localeController.isSwahili ? 'GAWA' : 'SPLIT'),
                   selected: _splitMode,
                   onSelected: (_) => _enterSplitMode(),
                 ),
@@ -488,7 +511,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Review & complete'),
+                  : Text(loc.reviewComplete),
             ),
           ],
         ),
@@ -497,16 +520,17 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Widget _buildSingleSection() {
+    final loc = localeController.s;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_paymentType == 'cash') ...[
           TextField(
             controller: _tenderedController,
-            decoration: const InputDecoration(
-              labelText: 'Cash received',
-              border: OutlineInputBorder(),
-              helperText: 'Change is calculated automatically',
+            decoration: InputDecoration(
+              labelText: loc.cashReceived,
+              border: const OutlineInputBorder(),
+              helperText: loc.changeAuto,
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (_) => setState(() {}),
@@ -524,9 +548,9 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         ] else if (!_isCredit) ...[
           TextField(
             controller: _paidController,
-            decoration: const InputDecoration(
-              labelText: 'Amount paid',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: loc.amountPaid,
+              border: const OutlineInputBorder(),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (_) => setState(() {}),
@@ -534,10 +558,10 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         ] else ...[
           TextField(
             controller: _paidController,
-            decoration: const InputDecoration(
-              labelText: 'Amount paid now (optional)',
-              border: OutlineInputBorder(),
-              helperText: 'Rest becomes customer debt',
+            decoration: InputDecoration(
+              labelText: loc.amountPaidNowOptional,
+              border: const OutlineInputBorder(),
+              helperText: loc.restBecomesDebt,
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (_) => setState(() {}),
@@ -551,10 +575,10 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             controller: _referenceController,
             decoration: InputDecoration(
               labelText: _paymentType == 'mpesa'
-                  ? 'M-Pesa reference (required)'
+                  ? loc.mpesaRefRequired
                   : _paymentType == 'bank'
-                      ? 'Bank reference (required)'
-                      : 'Card reference (optional)',
+                      ? loc.bankRefRequired
+                      : loc.cardRefOptional,
               border: const OutlineInputBorder(),
             ),
           ),
@@ -564,10 +588,10 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           Material(
             color: Colors.red.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(8),
-            child: const ListTile(
-              leading: Icon(Icons.warning, color: Colors.red),
-              title: Text('Credit / debt sale'),
-              subtitle: Text('Unpaid balance will be recorded as debt.'),
+            child: ListTile(
+              leading: const Icon(Icons.warning, color: Colors.red),
+              title: Text(loc.creditDebtSale),
+              subtitle: Text(loc.unpaidBecomesDebt),
             ),
           ),
           _customerTile(),
@@ -577,6 +601,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Widget _buildSplitSection() {
+    final loc = localeController.s;
     final remaining = _splitRemaining;
     final over = _splitPaid > _total + 0.001;
 
@@ -584,35 +609,26 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Split payment',
+          loc.splitPayment,
           style: Theme.of(context).textTheme.titleSmall,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Add legs until the total is covered. Shortfall can go on credit '
-          'if a customer is selected.',
-          style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
         for (var i = 0; i < _legs.length; i++) _legCard(i),
         TextButton.icon(
           onPressed: _addLeg,
           icon: const Icon(Icons.add),
-          label: const Text('Add payment leg'),
+          label: Text(loc.addPaymentLeg),
         ),
         const SizedBox(height: 8),
         Text(
-          'Paid ${Money.format(_splitPaid)} / ${Money.format(_total)}',
+          '${loc.amountPaid} ${Money.format(_splitPaid)} / ${Money.format(_total)}',
           style: TextStyle(
             fontWeight: FontWeight.w700,
-            color: over
-                ? Theme.of(context).colorScheme.error
-                : null,
+            color: over ? Theme.of(context).colorScheme.error : null,
           ),
         ),
         if (remaining > 0.001) ...[
-          Text('Remaining ${Money.format(remaining)}'),
-          const SizedBox(height: 8),
+          Text('${loc.remaining} ${Money.format(remaining)}'),
           _customerTile(),
         ],
       ],
@@ -620,6 +636,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Widget _legCard(int index) {
+    final loc = localeController.s;
     final leg = _legs[index];
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -632,21 +649,18 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: leg.type,
-                    decoration: const InputDecoration(
-                      labelText: 'Method',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: loc.method,
+                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 'cash', child: Text('Cash')),
-                      DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
-                      DropdownMenuItem(value: 'card', child: Text('Card')),
-                      DropdownMenuItem(value: 'bank', child: Text('Bank')),
+                    items: [
+                      DropdownMenuItem(value: 'cash', child: Text(loc.cash)),
+                      DropdownMenuItem(value: 'mpesa', child: Text(loc.mpesa)),
+                      DropdownMenuItem(value: 'card', child: Text(loc.card)),
+                      DropdownMenuItem(value: 'bank', child: Text(loc.bank)),
                     ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => leg.type = v);
-                    },
+                    onChanged: (v) => setState(() => leg.type = v ?? 'cash'),
                   ),
                 ),
                 if (_legs.length > 1)
@@ -659,9 +673,10 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             const SizedBox(height: 8),
             TextField(
               controller: leg.amountCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: loc.amount,
+                border: const OutlineInputBorder(),
+                isDense: true,
               ),
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
@@ -675,9 +690,10 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 controller: leg.refCtrl,
                 decoration: InputDecoration(
                   labelText: leg.type == 'card'
-                      ? 'Reference (optional)'
-                      : 'Reference (required)',
+                      ? loc.referenceOptional
+                      : loc.referenceRequired,
                   border: const OutlineInputBorder(),
+                  isDense: true,
                 ),
               ),
             ],
@@ -688,10 +704,10 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Widget _customerTile() {
+    final loc = localeController.s;
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.person),
-      title: Text(_customer?.name ?? 'Select customer'),
+      title: Text(_customer?.name ?? loc.selectCustomer),
       subtitle: _customer?.phone != null ? Text(_customer!.phone!) : null,
       trailing: const Icon(Icons.person_search),
       onTap: _pickCustomer,
