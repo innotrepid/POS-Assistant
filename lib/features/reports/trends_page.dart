@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/utils/money.dart';
+import '../../services/locale_service.dart';
 import '../../services/report_service.dart';
 
 /// Weekly and monthly sales graphs for the stall.
@@ -62,15 +63,16 @@ class _TrendsPageState extends State<TrendsPage>
 
   @override
   Widget build(BuildContext context) {
+    final s = localeController.s;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Trends'),
+        title: Text(s.trends),
         bottom: TabBar(
           controller: _tabs,
-          tabs: const [
-            Tab(text: 'Week'),
-            Tab(text: 'Month'),
-            Tab(text: '30 days'),
+          tabs: [
+            Tab(text: s.week),
+            Tab(text: s.month),
+            Tab(text: '30'),
           ],
         ),
         actions: [
@@ -112,9 +114,10 @@ class _PeriodTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = localeController.s;
     final s = series;
     if (s == null) {
-      return const Center(child: Text('No data'));
+      return Center(child: Text(loc.noData));
     }
     final scheme = Theme.of(context).colorScheme;
 
@@ -129,7 +132,7 @@ class _PeriodTab extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Bars show daily sales. Long-press a bar for the amount.',
+          loc.barsHint,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
@@ -140,10 +143,10 @@ class _PeriodTab extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                _sumRow('Sales', Money.format(s.salesTotal), bold: true),
-                _sumRow('Sales count', '${s.saleCount}'),
-                _sumRow('Est. gross profit', Money.format(s.grossProfit)),
-                _sumRow('Expenses', Money.format(s.expensesTotal)),
+                _sumRow(loc.sales, Money.format(s.salesTotal), bold: true),
+                _sumRow(loc.salesCount, '${s.saleCount}'),
+                _sumRow(loc.estGrossProfit, Money.format(s.grossProfit)),
+                _sumRow(loc.expenses, Money.format(s.expensesTotal)),
               ],
             ),
           ),
@@ -158,7 +161,7 @@ class _PeriodTab extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Text(
-                    'Sales by day',
+                    loc.salesByDay,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -177,7 +180,7 @@ class _PeriodTab extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 8, left: 6),
                     child: Text(
-                      'No completed sales in this period yet.',
+                      loc.noSalesThisPeriod,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
@@ -193,7 +196,7 @@ class _PeriodTab extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Day by day',
+                  loc.dayByDay,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -264,7 +267,7 @@ class _PeriodBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (buckets.isEmpty) {
-      return const Center(child: Text('No data'));
+      return Center(child: Text(localeController.s.noData));
     }
     final maxV = buckets.fold<double>(
       0,
@@ -272,7 +275,6 @@ class _PeriodBarChart extends StatelessWidget {
     );
     final scale = maxV <= 0 ? 1.0 : maxV;
 
-    // For long series, only label every nth day to avoid clutter.
     final labelEvery = denseLabels && buckets.length > 14
         ? 3
         : denseLabels && buckets.length > 7
@@ -296,7 +298,7 @@ class _PeriodBarChart extends StatelessWidget {
                       alignment: Alignment.bottomCenter,
                       child: Tooltip(
                         message:
-                            '${buckets[i].businessDate}: ${Money.format(buckets[i].salesTotal)} (${buckets[i].saleCount} sales)',
+                            '${buckets[i].businessDate}: ${Money.format(buckets[i].salesTotal)} (${buckets[i].saleCount})',
                         child: FractionallySizedBox(
                           heightFactor: maxV <= 0
                               ? 0.02
