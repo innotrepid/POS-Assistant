@@ -79,3 +79,6 @@ class LocaleController extends ChangeNotifier {
     } catch (_) {}
   }
 }
+
+/// App-wide language controller (loaded in main).
+final localeController = LocaleController();

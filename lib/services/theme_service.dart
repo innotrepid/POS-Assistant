@@ -84,3 +84,6 @@ class ThemeController extends ChangeNotifier {
     } catch (_) {}
   }
 }
+
+/// App-wide theme controller (loaded in main).
+final themeController = ThemeController();
