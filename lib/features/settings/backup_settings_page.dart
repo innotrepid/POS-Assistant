@@ -79,6 +79,51 @@ class _BackupSettingsPageState extends State<BackupSettingsPage> {
     });
   }
 
+  Future<void> _requestStorage() async {
+    await _run(() async {
+      final result = await _backup.ensureStorageAccess(request: true);
+      if (!mounted) return;
+      if (result.granted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.message.isEmpty
+                  ? 'Storage access granted'
+                  : result.message,
+            ),
+          ),
+        );
+        await _load();
+        return;
+      }
+      final open = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Allow file access'),
+          content: Text(
+            result.message.isEmpty
+                ? 'Mercate needs access to save backups under '
+                    'Documents/Mercate so you can open them in Files or copy to USB.'
+                : result.message,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Open settings'),
+            ),
+          ],
+        ),
+      );
+      if (open == true) {
+        await _backup.openStorageSettings();
+      }
+    });
+  }
+
   Future<void> _share(BackupEntry entry) async {
     await _run(() async {
       await _backup.shareBackup(entry);
@@ -193,26 +238,17 @@ class _BackupSettingsPageState extends State<BackupSettingsPage> {
                           Text(
                             _isPublic
                                 ? 'Saved under phone Documents (easy to find):'
-                                : 'Backup folder (may be under app storage — use Share or Downloads):',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                : 'Backup folder (may be under app storage — allow access below):',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             _friendlyPath ?? _folderPath!,
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
-                          if (_friendlyPath != null &&
-                              _friendlyPath != _folderPath) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              _folderPath!,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                            ),
-                          ],
                           TextButton.icon(
                             onPressed: () async {
                               await Clipboard.setData(
@@ -243,16 +279,30 @@ class _BackupSettingsPageState extends State<BackupSettingsPage> {
                               : const Icon(Icons.backup_outlined),
                           label: Text(_busy ? 'Working…' : 'Backup now'),
                         ),
+                        if (!_isPublic) ...[
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _busy ? null : _requestStorage,
+                            icon: const Icon(Icons.folder_shared_outlined),
+                            label: const Text('Allow Documents folder access'),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'On some phones Android hides app folders. '
+                            'Allow access so backups appear under '
+                            'Documents → Mercate (or Download → Mercate).',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: TextStyle(color: scheme.error),
-                  ),
+                  Text(_error!, style: TextStyle(color: scheme.error)),
                 ],
                 const SizedBox(height: 20),
                 Text(
@@ -274,58 +324,39 @@ class _BackupSettingsPageState extends State<BackupSettingsPage> {
                     child: Text('No backups yet. Tap Backup now.'),
                   )
                 else
-                  ...[
-                    for (final e in _entries)
-                      Card(
-                        child: ExpansionTile(
-                          leading: const Icon(Icons.folder_zip_outlined),
-                          title: Text(e.label),
-                          subtitle: Text(
-                            '${e.files.length} files · schema ${e.schemaVersion}',
-                          ),
-                          children: [
-                            ListTile(
-                              title: const Text('Share (USB / Drive / Bluetooth)'),
-                              leading: const Icon(Icons.share_outlined),
-                              onTap: _busy ? null : () => _share(e),
-                            ),
-                            ListTile(
-                              title: const Text('Save to Downloads'),
-                              leading: const Icon(Icons.download_outlined),
-                              onTap:
-                                  _busy ? null : () => _exportDownloads(e),
-                            ),
-                            ListTile(
-                              title: const Text('Restore'),
-                              leading: const Icon(Icons.restore),
-                              onTap: _busy ? null : () => _restore(e),
-                            ),
-                            ListTile(
-                              title: const Text('Delete'),
-                              leading: Icon(Icons.delete_outline,
-                                  color: scheme.error),
-                              onTap: _busy ? null : () => _delete(e),
-                            ),
-                            OverflowBar(
-                              children: [
-                                TextButton.icon(
-                                  onPressed: _busy ? null : () => _share(e),
-                                  icon: const Icon(Icons.share, size: 18),
-                                  label: const Text('Share'),
-                                ),
-                                TextButton.icon(
-                                  onPressed: _busy
-                                      ? null
-                                      : () => _exportDownloads(e),
-                                  icon: const Icon(Icons.download, size: 18),
-                                  label: const Text('Downloads'),
-                                ),
-                              ],
-                            ),
-                          ],
+                  for (final e in _entries)
+                    Card(
+                      child: ExpansionTile(
+                        leading: const Icon(Icons.folder_zip_outlined),
+                        title: Text(e.label),
+                        subtitle: Text(
+                          '${e.files.length} files · schema ${e.schemaVersion}',
                         ),
+                        children: [
+                          ListTile(
+                            title: const Text('Share (USB / Drive / Bluetooth)'),
+                            leading: const Icon(Icons.share_outlined),
+                            onTap: _busy ? null : () => _share(e),
+                          ),
+                          ListTile(
+                            title: const Text('Save to Downloads'),
+                            leading: const Icon(Icons.download_outlined),
+                            onTap: _busy ? null : () => _exportDownloads(e),
+                          ),
+                          ListTile(
+                            title: const Text('Restore'),
+                            leading: const Icon(Icons.restore),
+                            onTap: _busy ? null : () => _restore(e),
+                          ),
+                          ListTile(
+                            title: const Text('Delete'),
+                            leading: Icon(Icons.delete_outline,
+                                color: scheme.error),
+                            onTap: _busy ? null : () => _delete(e),
+                          ),
+                        ],
                       ),
-                  ],
+                    ),
               ],
             ),
     );
