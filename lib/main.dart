@@ -20,12 +20,14 @@ import 'features/suppliers/suppliers_page.dart';
 import 'services/alert_scanner_service.dart';
 import 'services/backup_service.dart';
 import 'services/business_profile_service.dart';
+import 'services/locale_service.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
 import 'services/system_notification_service.dart';
 import 'services/theme_service.dart';
 
 final themeController = ThemeController();
+final localeController = LocaleController();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,6 +48,7 @@ Future<void> main() async {
     }
   } catch (_) {}
   await themeController.load();
+  await localeController.load();
   try {
     await SystemNotificationService.instance.init();
   } catch (_) {}
@@ -64,11 +67,17 @@ class MercateApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: themeController,
+      listenable: Listenable.merge([themeController, localeController]),
       builder: (context, _) {
+        final s = localeController.s;
         return MaterialApp(
-          title: 'Mercate',
+          title: s.appName,
           debugShowCheckedModeBanner: false,
+          locale: localeController.locale,
+          supportedLocales: const [
+            Locale('en'),
+            Locale('sw'),
+          ],
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
           themeMode: themeController.mode,
@@ -191,13 +200,19 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _profiles.addListener(_onProfileChanged);
+    localeController.addListener(_onLocaleChanged);
     _bootstrap();
   }
 
   @override
   void dispose() {
     _profiles.removeListener(_onProfileChanged);
+    localeController.removeListener(_onLocaleChanged);
     super.dispose();
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onProfileChanged() {
@@ -247,6 +262,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   List<_NavItem> _items() {
+    final s = localeController.s;
     return [
       _NavItem(
         id: 'home',
@@ -257,20 +273,20 @@ class _AppShellState extends State<AppShell> {
           onOpenSettings: _openSettings,
           onRefreshShell: _bootstrap,
         ),
-        destination: const NavigationDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home),
-          label: 'Home',
+        destination: NavigationDestination(
+          icon: const Icon(Icons.home_outlined),
+          selectedIcon: const Icon(Icons.home),
+          label: s.home,
         ),
         visible: (_) => true,
       ),
       _NavItem(
         id: 'pos',
         page: const PosPage(),
-        destination: const NavigationDestination(
-          icon: Icon(Icons.point_of_sale_outlined),
-          selectedIcon: Icon(Icons.point_of_sale),
-          label: 'Sell',
+        destination: NavigationDestination(
+          icon: const Icon(Icons.point_of_sale_outlined),
+          selectedIcon: const Icon(Icons.point_of_sale),
+          label: s.sell,
         ),
         visible: (f) => f.sales,
       ),
@@ -280,40 +296,40 @@ class _AppShellState extends State<AppShell> {
           unreadCount: _unread,
           onOpenNotifications: _openNotifications,
         ),
-        destination: const NavigationDestination(
-          icon: Icon(Icons.inventory_2_outlined),
-          selectedIcon: Icon(Icons.inventory_2),
-          label: 'Stock',
+        destination: NavigationDestination(
+          icon: const Icon(Icons.inventory_2_outlined),
+          selectedIcon: const Icon(Icons.inventory_2),
+          label: s.stock,
         ),
         visible: (f) => f.stock,
       ),
       _NavItem(
         id: 'customers',
         page: const CustomersPage(),
-        destination: const NavigationDestination(
-          icon: Icon(Icons.people_outline),
-          selectedIcon: Icon(Icons.people),
-          label: 'Customers',
+        destination: NavigationDestination(
+          icon: const Icon(Icons.people_outline),
+          selectedIcon: const Icon(Icons.people),
+          label: s.customers,
         ),
         visible: (f) => f.customers,
       ),
       _NavItem(
         id: 'suppliers',
         page: const SuppliersPage(),
-        destination: const NavigationDestination(
-          icon: Icon(Icons.local_shipping_outlined),
-          selectedIcon: Icon(Icons.local_shipping),
-          label: 'Suppliers',
+        destination: NavigationDestination(
+          icon: const Icon(Icons.local_shipping_outlined),
+          selectedIcon: const Icon(Icons.local_shipping),
+          label: s.suppliers,
         ),
         visible: (f) => f.suppliers,
       ),
       _NavItem(
         id: 'reports',
         page: const ReportsPage(),
-        destination: const NavigationDestination(
-          icon: Icon(Icons.bar_chart_outlined),
-          selectedIcon: Icon(Icons.bar_chart),
-          label: 'Reports',
+        destination: NavigationDestination(
+          icon: const Icon(Icons.bar_chart_outlined),
+          selectedIcon: const Icon(Icons.bar_chart),
+          label: s.reports,
         ),
         visible: (f) => f.reports,
       ),
@@ -330,6 +346,7 @@ class _AppShellState extends State<AppShell> {
 
     final currentId = visible.isEmpty ? 'home' : visible[selectedIndex].id;
     final showAssistantFab = currentId != 'pos';
+    final s = localeController.s;
 
     return Scaffold(
       extendBody: true,
@@ -348,7 +365,7 @@ class _AppShellState extends State<AppShell> {
               child: FloatingActionButton(
                 heroTag: 'assistant_fab',
                 onPressed: _openAssistant,
-                tooltip: 'Assistant',
+                tooltip: s.assistant,
                 child: const Icon(Icons.auto_awesome),
               ),
             )

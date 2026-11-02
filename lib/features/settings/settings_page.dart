@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../main.dart' show localeController, themeController;
 import '../../services/business_profile_service.dart';
 import '../../services/theme_service.dart';
 import 'backup_settings_page.dart';
 import 'business_profile_page.dart';
 import 'security_settings_page.dart';
 
-/// Hub for profile, security, backup, appearance — reachable from Home.
+/// Hub for profile, security, backup, appearance, language.
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -20,6 +21,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _shopName = 'Mercate';
   String _profileLabel = '';
   ThemeMode _themeMode = ThemeMode.system;
+  String _lang = 'en';
 
   @override
   void initState() {
@@ -36,21 +38,36 @@ class _SettingsPageState extends State<SettingsPage> {
       _shopName = name;
       _profileLabel = profile.label;
       _themeMode = mode;
+      _lang = localeController.code;
     });
   }
 
   Future<void> _setTheme(ThemeMode mode) async {
-    await ThemeService().setThemeMode(mode);
+    await themeController.setMode(mode);
     setState(() => _themeMode = mode);
     if (!mounted) return;
+    final s = localeController.s;
+    final label = mode == ThemeMode.light
+        ? s.themeLight
+        : mode == ThemeMode.dark
+            ? s.themeDark
+            : s.themeSystem;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label · ${s.save}')),
+    );
+  }
+
+  Future<void> _setLanguage(String code) async {
+    await localeController.setLanguageCode(code);
+    setState(() => _lang = localeController.code);
+    if (!mounted) return;
+    final s = localeController.s;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          mode == ThemeMode.light
-              ? 'Light mode saved'
-              : mode == ThemeMode.dark
-                  ? 'Dark mode saved'
-                  : 'System theme saved',
+          code == 'sw'
+              ? 'Lugha: Kiswahili'
+              : 'Language: English',
         ),
       ),
     );
@@ -58,9 +75,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final s = localeController.s;
+
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(s.settings)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
@@ -78,7 +97,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _profileLabel.isEmpty ? 'Shop profile' : _profileLabel,
+                  _profileLabel.isEmpty ? s.businessProfile : _profileLabel,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -87,13 +106,6 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 16),
-          Text(
-            'Business',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-          const SizedBox(height: 8),
           GlassPanel(
             borderRadius: 16,
             padding: EdgeInsets.zero,
@@ -101,23 +113,20 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 ListTile(
                   leading: const Icon(Icons.storefront_outlined),
-                  title: const Text('Shop profile'),
-                  subtitle: const Text('Mama mboga, duka, mini-market…'),
+                  title: Text(s.businessProfile),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () async {
-                    await Navigator.of(context).push(
+                  onTap: () {
+                    Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => const BusinessProfilePage(),
                       ),
-                    );
-                    _load();
+                    ).then((_) => _load());
                   },
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.lock_outline),
-                  title: const Text('PIN & biometrics'),
-                  subtitle: const Text('Lock sensitive actions'),
+                  title: Text(s.security),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     Navigator.of(context).push(
@@ -130,8 +139,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.backup_outlined),
-                  title: const Text('Data backup'),
-                  subtitle: const Text('Everyday local copy of your shop data'),
+                  title: Text(s.backup),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     Navigator.of(context).push(
@@ -146,7 +154,44 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Appearance',
+            s.language,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            s.languageHint,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 8),
+          GlassPanel(
+            borderRadius: 16,
+            padding: const EdgeInsets.all(12),
+            child: SegmentedButton<String>(
+              segments: [
+                ButtonSegment(
+                  value: 'en',
+                  label: Text(s.languageEnglish),
+                  icon: const Icon(Icons.language),
+                ),
+                ButtonSegment(
+                  value: 'sw',
+                  label: Text(s.languageSwahili),
+                  icon: const Icon(Icons.translate),
+                ),
+              ],
+              selected: {_lang},
+              onSelectionChanged: (set) {
+                if (set.isNotEmpty) _setLanguage(set.first);
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            s.appearance,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -156,25 +201,25 @@ class _SettingsPageState extends State<SettingsPage> {
             borderRadius: 16,
             padding: const EdgeInsets.all(12),
             child: SegmentedButton<ThemeMode>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: ThemeMode.light,
-                  label: Text('Light'),
-                  icon: Icon(Icons.light_mode),
+                  label: Text(s.themeLight),
+                  icon: const Icon(Icons.light_mode),
                 ),
                 ButtonSegment(
                   value: ThemeMode.dark,
-                  label: Text('Dark'),
-                  icon: Icon(Icons.dark_mode),
+                  label: Text(s.themeDark),
+                  icon: const Icon(Icons.dark_mode),
                 ),
                 ButtonSegment(
                   value: ThemeMode.system,
-                  label: Text('System'),
-                  icon: Icon(Icons.phone_android),
+                  label: Text(s.themeSystem),
+                  icon: const Icon(Icons.phone_android),
                 ),
               ],
               selected: {_themeMode},
-              onSelectionChanged: (s) => _setTheme(s.first),
+              onSelectionChanged: (sel) => _setTheme(sel.first),
             ),
           ),
           const SizedBox(height: 24),
