@@ -17,6 +17,7 @@ dependencies:
   # excel 4.x requires archive ^3.6; keep in that range for zip backups too
   archive: ^3.6.1
   share_plus: ^10.1.4
+  permission_handler: ^11.3.1
   intl: ^0.20.2
   uuid: ^4.5.1
   pdf: ^3.11.3
