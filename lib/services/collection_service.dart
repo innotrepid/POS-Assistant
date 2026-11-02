@@ -142,6 +142,31 @@ class CollectionService {
     return rows.map(_promiseFromRow).toList();
   }
 
+  /// Open promises scheduled for a specific calendar day (e.g. today).
+  Future<List<PromiseToPay>> listPromisesDueOn(DateTime day) async {
+    final key = DateTime(day.year, day.month, day.day)
+        .toIso8601String()
+        .substring(0, 10);
+    final db = await _database.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT p.*, c.name AS customer_name, c.phone AS phone
+      FROM promises_to_pay p
+      LEFT JOIN customers c ON c.id = p.customer_id
+      WHERE p.status = 'open' AND p.promised_date = ?
+      ORDER BY p.created_at ASC
+      LIMIT 100
+      ''',
+      [key],
+    );
+    return rows.map(_promiseFromRow).toList();
+  }
+
+  /// Open promises due today or earlier (overdue promises).
+  Future<List<PromiseToPay>> listPromisesDueTodayOrEarlier() async {
+    return listOpenPromises(onOrBefore: DateTime.now());
+  }
+
   Future<List<PromiseToPay>> listPromisesForCustomer(String customerId) async {
     final db = await _database.database;
     final rows = await db.rawQuery(
