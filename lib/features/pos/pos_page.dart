@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/product.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/inventory_service.dart';
 import '../../services/locale_service.dart';
@@ -140,7 +139,7 @@ class _PosPageState extends State<PosPage> {
       );
       return;
     }
-    _cart.addCustom(name: name, unitPrice: price, quantity: qty);
+    _cart.addQuickSale(name: name, unitPrice: price, quantity: qty);
   }
 
   Future<void> _checkout() async {
@@ -287,7 +286,7 @@ class _PosPageState extends State<PosPage> {
                         children: [
                           Expanded(
                             child: Text(
-                              '${_cart.lines.length} · ${Money.format(_cart.total)}',
+                              '${_cart.lines.length} · ${Money.format(_cart.subtotal)}',
                               style: Theme.of(context)
                                   .textTheme
                                   .titleMedium
