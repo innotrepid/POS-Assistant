@@ -64,6 +64,26 @@ class PartyBalanceRow {
   });
 }
 
+/// One hour of sales for day graphs (0–23).
+class HourlySalesBucket {
+  final int hour;
+  final double salesTotal;
+  final int saleCount;
+
+  const HourlySalesBucket({
+    required this.hour,
+    required this.salesTotal,
+    required this.saleCount,
+  });
+
+  String get label {
+    final h = hour % 24;
+    final ampm = h < 12 ? 'am' : 'pm';
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    return '$h12$ampm';
+  }
+}
+
 class ReportService {
   ReportService({AppDatabase? database})
       : _database = database ?? AppDatabase.instance;
@@ -162,6 +182,52 @@ class ReportService {
       estimatedCost: estimatedCost,
       grossProfit: Money.round(salesTotal - estimatedCost),
     );
+  }
+
+  /// Sales totals by hour for the business day (local ISO timestamps).
+  Future<List<HourlySalesBucket>> salesByHour([DateTime? day]) async {
+    final d = day ?? DateTime.now();
+    final range = DayRange.of(d);
+    final db = await _database.database;
+
+    final rows = await db.rawQuery(
+      '''
+      SELECT
+        CAST(substr(created_at, 12, 2) AS INTEGER) AS hour,
+        COALESCE(SUM(total), 0) AS sales_total,
+        COUNT(*) AS sale_count
+      FROM sales
+      WHERE sale_status = 'completed'
+        AND created_at >= ? AND created_at < ?
+        AND length(created_at) >= 13
+      GROUP BY CAST(substr(created_at, 12, 2) AS INTEGER)
+      ORDER BY hour ASC
+      ''',
+      [range.startIso, range.endIso],
+    );
+
+    final byHour = <int, HourlySalesBucket>{};
+    for (final r in rows) {
+      final h = (r['hour'] as num?)?.toInt() ?? 0;
+      byHour[h] = HourlySalesBucket(
+        hour: h,
+        salesTotal: Money.round((r['sales_total'] as num?)?.toDouble() ?? 0),
+        saleCount: (r['sale_count'] as num?)?.toInt() ?? 0,
+      );
+    }
+
+    // Prefer trading hours 6–21; fall back to any hours that have sales.
+    final active =
+        byHour.keys.where((h) => (byHour[h]?.salesTotal ?? 0) > 0).toList()
+          ..sort();
+    final start = active.isEmpty ? 6 : (active.first < 6 ? active.first : 6);
+    final end = active.isEmpty ? 21 : (active.last > 21 ? active.last : 21);
+
+    return [
+      for (var h = start; h <= end; h++)
+        byHour[h] ??
+            HourlySalesBucket(hour: h, salesTotal: 0, saleCount: 0),
+    ];
   }
 
   /// Products sold on [day] with quantities — for short PDF reports.
