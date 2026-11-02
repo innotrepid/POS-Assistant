@@ -131,18 +131,49 @@ class DebtorService {
     );
   }
 
+  /// Collection SMS — follows app language (Kiswahili / English).
   static String collectionSmsBody({
     required String customerName,
     required double balance,
     required String shopName,
     int? daysOpen,
+    bool swahili = true,
   }) {
+    final amount = Money.format(balance);
+    if (swahili) {
+      final days = daysOpen != null && daysOpen > 0
+          ? ' (deni la siku $daysOpen)'
+          : '';
+      return 'Habari $customerName, mimi ni $shopName. '
+          'Deni lako ni $amount$days. '
+          'Tafadhali lipa unapoweza. Asante.';
+    }
     final days = daysOpen != null && daysOpen > 0
         ? ' (open $daysOpen day${daysOpen == 1 ? '' : 's'})'
         : '';
-    return 'Habari $customerName, this is $shopName. '
-        'Your outstanding balance is ${Money.format(balance)}$days. '
-        'Please settle when you can. Asante.';
+    return 'Hello $customerName, this is $shopName. '
+        'Your outstanding balance is $amount$days. '
+        'Please settle when you can. Thank you.';
+  }
+
+  /// Reminder when customer promised to pay today.
+  static String promiseDueSmsBody({
+    required String customerName,
+    required double balance,
+    required String shopName,
+    String? promisedDate,
+    bool swahili = true,
+  }) {
+    final amount = Money.format(balance);
+    final when = promisedDate ?? 'leo';
+    if (swahili) {
+      return 'Habari $customerName, mimi ni $shopName. '
+          'Uliahidi kulipa $when. Deni ni $amount. '
+          'Tafadhali kamilisha leo. Asante.';
+    }
+    return 'Hello $customerName, this is $shopName. '
+        'You promised to pay on $when. Balance is $amount. '
+        'Please complete payment today. Thank you.';
   }
 
   Future<String> recordRepayment({
