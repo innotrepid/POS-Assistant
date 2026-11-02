@@ -5,6 +5,7 @@ import '../../core/models/customer.dart';
 import '../../core/utils/money.dart';
 import '../../services/customer_service.dart';
 import '../../services/debtor_service.dart';
+import '../../services/locale_service.dart';
 import '../../services/policy_service.dart';
 import 'customer_statement_page.dart';
 import 'debtors_page.dart';
@@ -46,7 +47,8 @@ class _CustomersPageState extends State<CustomersPage> {
         balances[c.id] = await _debtors.getBalance(c.id);
       }
       final overdueDays = await _policies.getOverdueDebtDays();
-      final outstanding = await _debtors.listOutstanding(overdueDays: overdueDays);
+      final outstanding =
+          await _debtors.listOutstanding(overdueDays: overdueDays);
       if (!mounted) return;
       setState(() {
         _customers = list;
@@ -74,26 +76,28 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 
   Future<void> _addCustomer() async {
+    final s = localeController.s;
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Add customer'),
+        title: Text(s.addCustomer),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Name'),
+              decoration: InputDecoration(labelText: s.name),
               autofocus: true,
+              textCapitalization: TextCapitalization.words,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: phoneCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Phone',
-                helperText: 'Max 10 digits (e.g. 07XXXXXXXX)',
+              decoration: InputDecoration(
+                labelText: s.phone,
+                helperText: s.phoneHint,
               ),
               keyboardType: TextInputType.phone,
               maxLength: 10,
@@ -102,8 +106,14 @@ class _CustomersPageState extends State<CustomersPage> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(s.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(s.save),
+          ),
         ],
       ),
     );
@@ -116,32 +126,28 @@ class _CustomersPageState extends State<CustomersPage> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = localeController.s;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Customers'),
+        title: Text(s.customers),
         actions: [
           IconButton(
-            tooltip: _debtorCount == 0
-                ? 'Who owes you'
-                : 'Who owes you ($_debtorCount)'
-                    '${_overdueCount > 0 ? ' · $_overdueCount overdue' : ''}',
+            tooltip: s.walletTooltip,
             onPressed: _openDebtors,
             icon: Badge(
               isLabelVisible: _debtorCount > 0,
               label: Text('$_debtorCount'),
-              backgroundColor: _overdueCount > 0 ? scheme.error : null,
-              child: Icon(
-                Icons.account_balance_wallet_outlined,
-                color: _overdueCount > 0 ? scheme.error : null,
-              ),
+              child: const Icon(Icons.account_balance_wallet_outlined),
             ),
           ),
         ],
@@ -151,87 +157,69 @@ class _CustomersPageState extends State<CustomersPage> {
         padding: const EdgeInsets.only(bottom: 72),
         child: FloatingActionButton.extended(
           onPressed: _addCustomer,
-          icon: const Icon(Icons.person_add),
-          label: const Text('Add customer'),
+          icon: const Icon(Icons.person_add_outlined),
+          label: Text(s.addCustomer),
         ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
-              : Column(
-                  children: [
-                    if (_debtorCount > 0)
-                      Material(
-                        color: scheme.errorContainer.withOpacity(0.35),
-                        child: ListTile(
-                          leading: Icon(
-                            Icons.account_balance_wallet_outlined,
-                            color: scheme.error,
-                          ),
-                          title: Text(
-                            '$_debtorCount customer${_debtorCount == 1 ? '' : 's'} owe you'
-                            '${_overdueCount > 0 ? ' · $_overdueCount overdue' : ''}',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          subtitle: const Text('Call, SMS, promises — open wallet'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: _openDebtors,
+              : _customers.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          s.isSw
+                              ? 'Bado hakuna wateja. Gusa Ongeza mteja kwa wanaonunua kwa mkopo.'
+                              : 'No customers yet. Tap Add customer for people who buy on credit.',
+                          textAlign: TextAlign.center,
                         ),
                       ),
-                    Expanded(
-                      child: _customers.isEmpty
-                          ? const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(24),
-                                child: Text(
-                                  'No customers yet. Tap Add customer for people who buy on credit.',
-                                  textAlign: TextAlign.center,
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 120),
+                      itemCount: _customers.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final c = _customers[index];
+                        final bal = _balances[c.id] ?? 0;
+                        return ListTile(
+                          title: Text(
+                            c.name,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            [
+                              if (c.phone != null && c.phone!.isNotEmpty)
+                                c.phone!,
+                              if (bal > 0)
+                                (s.isSw
+                                    ? 'Anadeni ${Money.format(bal)}'
+                                    : 'Owes ${Money.format(bal)}'),
+                            ].join(' · '),
+                          ),
+                          trailing: bal > 0
+                              ? Icon(
+                                  Icons.account_balance_wallet_outlined,
+                                  size: 20,
+                                  color: scheme.error,
+                                )
+                              : null,
+                          onTap: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => CustomerStatementPage(
+                                  customerId: c.id,
+                                  customerName: c.name,
                                 ),
                               ),
-                            )
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(0, 0, 0, 120),
-                              itemCount: _customers.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final c = _customers[index];
-                                final bal = _balances[c.id] ?? 0;
-                                return ListTile(
-                                  title: Text(
-                                    c.name,
-                                    style: const TextStyle(fontWeight: FontWeight.w600),
-                                  ),
-                                  subtitle: Text(
-                                    [
-                                      if (c.phone != null && c.phone!.isNotEmpty) c.phone!,
-                                      if (bal > 0) 'Owes ${Money.format(bal)}',
-                                    ].join(' · '),
-                                  ),
-                                  trailing: bal > 0
-                                      ? Icon(
-                                          Icons.account_balance_wallet_outlined,
-                                          size: 20,
-                                          color: scheme.error,
-                                        )
-                                      : null,
-                                  onTap: () async {
-                                    await Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => CustomerStatementPage(
-                                          customerId: c.id,
-                                          customerName: c.name,
-                                        ),
-                                      ),
-                                    );
-                                    if (mounted) _load();
-                                  },
-                                );
-                              },
-                            ),
+                            );
+                            if (mounted) _load();
+                          },
+                        );
+                      },
                     ),
-                  ],
-                ),
     );
   }
 }
