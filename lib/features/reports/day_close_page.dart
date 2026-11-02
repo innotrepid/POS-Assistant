@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/utils/money.dart';
 import '../../services/day_closing_service.dart';
+import '../../services/locale_service.dart';
 import '../../services/report_service.dart';
 import '../../services/security_service.dart';
 import '../security/lock_screen.dart';
@@ -77,21 +78,21 @@ class _DayClosePageState extends State<DayClosePage> {
   }
 
   Future<void> _confirmClose() async {
+    final loc = localeController.s;
     final s = _summary;
     final r = _report;
     if (s == null || r == null) return;
     if (s.isClosed) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This day is already closed')),
+        SnackBar(content: Text(loc.thisDayAlreadyClosed)),
       );
       return;
     }
 
-    // Always require PIN when one is set (even if "require unlock on open" is off).
     if (await _security.hasPin()) {
       final pinOk = await promptPinDialog(
         context,
-        title: 'PIN to close day',
+        title: loc.pinToCloseDay,
         security: _security,
       );
       if (!pinOk || !mounted) return;
@@ -99,18 +100,20 @@ class _DayClosePageState extends State<DayClosePage> {
       final proceed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('No PIN set'),
-          content: const Text(
-            'Closing without a PIN is less safe. Set a PIN in Settings when you can. Close anyway?',
+          title: Text(loc.noPinSet),
+          content: Text(
+            loc.isSw
+                ? 'Kufunga bila PIN si salama sana. Weka PIN kwenye Mipangilio. Endelea kufunga?'
+                : 'Closing without a PIN is less safe. Set a PIN in Settings when you can. Close anyway?',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
+              child: Text(loc.cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Close day'),
+              child: Text(loc.closeDay),
             ),
           ],
         ),
@@ -129,7 +132,7 @@ class _DayClosePageState extends State<DayClosePage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Day closed')),
+        SnackBar(content: Text(loc.dayClosed)),
       );
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -144,13 +147,14 @@ class _DayClosePageState extends State<DayClosePage> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = localeController.s;
     final scheme = Theme.of(context).colorScheme;
     final s = _summary;
     final r = _report;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Close day'),
+        title: Text(loc.closeDay),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -168,7 +172,7 @@ class _DayClosePageState extends State<DayClosePage> {
                   ),
                 )
               : s == null || r == null
-                  ? const Center(child: Text('No data'))
+                  ? Center(child: Text(loc.noData))
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                       children: [
@@ -182,8 +186,8 @@ class _DayClosePageState extends State<DayClosePage> {
                         const SizedBox(height: 4),
                         Text(
                           s.isClosed
-                              ? 'Already closed — report only'
-                              : 'Review the day, then confirm with PIN',
+                              ? loc.alreadyClosed
+                              : loc.reviewThenPin,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: scheme.onSurfaceVariant,
                               ),
@@ -196,38 +200,38 @@ class _DayClosePageState extends State<DayClosePage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Day totals',
+                                  loc.dayTotals,
                                   style: Theme.of(context)
                                       .textTheme
                                       .titleMedium
                                       ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 10),
-                                _row('Sales total', Money.format(r.salesTotal),
+                                _row(loc.salesTotal, Money.format(r.salesTotal),
                                     bold: true),
-                                _row('Sales count', '${r.saleCount}'),
-                                _row('Cash', Money.format(r.cash)),
-                                _row('M-Pesa', Money.format(r.mpesa)),
+                                _row(loc.salesCount, '${r.saleCount}'),
+                                _row(loc.cash, Money.format(r.cash)),
+                                _row(loc.mpesa, Money.format(r.mpesa)),
                                 if (r.card > 0)
-                                  _row('Card', Money.format(r.card)),
+                                  _row(loc.card, Money.format(r.card)),
                                 if (r.other > 0)
-                                  _row('Other paid', Money.format(r.other)),
+                                  _row(loc.otherPaid, Money.format(r.other)),
                                 _row(
-                                  'New credit (deni)',
+                                  loc.newCredit,
                                   Money.format(r.creditTotal),
                                 ),
                                 const Divider(height: 20),
                                 _row(
-                                  'Est. cost of goods',
+                                  loc.estCostGoods,
                                   Money.format(r.estimatedCost),
                                 ),
                                 _row(
-                                  'Est. gross profit',
+                                  loc.estGrossProfit,
                                   Money.format(r.grossProfit),
                                   bold: true,
                                 ),
                                 _row(
-                                  'Expenses',
+                                  loc.expenses,
                                   Money.format(r.expensesTotal),
                                 ),
                               ],
@@ -246,7 +250,7 @@ class _DayClosePageState extends State<DayClosePage> {
                                     horizontal: 4,
                                   ),
                                   child: Text(
-                                    'Sales by hour',
+                                    loc.salesByHour,
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleMedium
@@ -265,7 +269,7 @@ class _DayClosePageState extends State<DayClosePage> {
                                   Padding(
                                     padding: const EdgeInsets.only(top: 8),
                                     child: Text(
-                                      'No completed sales yet today.',
+                                      loc.noCompletedSalesToday,
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall,
@@ -284,7 +288,7 @@ class _DayClosePageState extends State<DayClosePage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Top items sold',
+                                    loc.topItemsSold,
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleMedium
@@ -317,7 +321,7 @@ class _DayClosePageState extends State<DayClosePage> {
                         if (!s.isClosed) ...[
                           const SizedBox(height: 16),
                           Text(
-                            'Till count',
+                            loc.tillCount,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -325,17 +329,16 @@ class _DayClosePageState extends State<DayClosePage> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'M-Pesa is taken from sales '
-                            '(${Money.format(s.salesMpesa)}) — no need to re-enter.',
+                            '${loc.mpesaFromSales} (${Money.format(s.salesMpesa)})',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           const SizedBox(height: 12),
                           TextField(
                             controller: _openingCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Opening cash in till',
-                              helperText: 'What was in the till this morning',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: loc.openingCash,
+                              helperText: loc.openingCashHint,
+                              border: const OutlineInputBorder(),
                             ),
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
@@ -345,9 +348,9 @@ class _DayClosePageState extends State<DayClosePage> {
                           TextField(
                             controller: _cashCtrl,
                             decoration: InputDecoration(
-                              labelText: 'Counted cash now',
+                              labelText: loc.countedCashNow,
                               helperText:
-                                  'Cash sales today about ${Money.format(s.salesCash)}',
+                                  '${loc.cash}: ${Money.format(s.salesCash)}',
                               border: const OutlineInputBorder(),
                             ),
                             keyboardType: const TextInputType.numberWithOptions(
@@ -357,9 +360,9 @@ class _DayClosePageState extends State<DayClosePage> {
                           const SizedBox(height: 12),
                           TextField(
                             controller: _notesCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Notes (optional)',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: loc.notesOptional,
+                              border: const OutlineInputBorder(),
                             ),
                             maxLines: 2,
                           ),
@@ -376,7 +379,7 @@ class _DayClosePageState extends State<DayClosePage> {
                                   )
                                 : const Icon(Icons.lock_outline),
                             label: Text(
-                              _busy ? 'Closing…' : 'Confirm close with PIN',
+                              _busy ? loc.closingBusy : loc.confirmCloseWithPin,
                             ),
                             style: FilledButton.styleFrom(
                               minimumSize: const Size.fromHeight(48),
@@ -423,7 +426,7 @@ class _HourlyBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (buckets.isEmpty) {
-      return const Center(child: Text('No data'));
+      return Center(child: Text(localeController.s.noData));
     }
     final maxV = buckets.fold<double>(
       0,
