@@ -3,9 +3,13 @@ import 'package:mercate/services/assistant_service.dart';
 import 'package:mercate/services/locale_service.dart';
 
 void main() {
-  setUpAll(() async {
-    // Ensure language is English for deterministic CI assertions.
-    await localeController.setLanguageCode('en');
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() async {
+    // Deterministic English labels for CI.
+    try {
+      await localeController.setLanguageCode('en');
+    } catch (_) {}
   });
 
   group('AssistantService', () {
