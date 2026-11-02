@@ -64,6 +64,13 @@ class PartyBalanceRow {
   });
 }
 
+class CategoryTotal {
+  final String category;
+  final double total;
+
+  const CategoryTotal({required this.category, required this.total});
+}
+
 /// One hour of sales for day graphs (0–23).
 class HourlySalesBucket {
   final int hour;
@@ -233,7 +240,6 @@ class ReportService {
     );
   }
 
-  /// Sales totals by hour for the business day (local ISO timestamps).
   Future<List<HourlySalesBucket>> salesByHour([DateTime? day]) async {
     final d = day ?? DateTime.now();
     final range = DayRange.of(d);
@@ -278,7 +284,6 @@ class ReportService {
     ];
   }
 
-  /// Last [days] calendar days ending on [end] (inclusive), oldest → newest.
   Future<PeriodSeries> salesSeries({
     required int days,
     DateTime? end,
@@ -297,10 +302,8 @@ class ReportService {
     for (var i = 0; i < days; i++) {
       final d = startDay.add(Duration(days: i));
       final report = await daySales(d);
-      final wd = d.weekday; // 1=Mon … 7=Sun
-      final short = days <= 7
-          ? _weekdayShort[wd - 1]
-          : '${d.day}';
+      final wd = d.weekday;
+      final short = days <= 7 ? _weekdayShort[wd - 1] : '${d.day}';
       final bucket = PeriodBucket(
         businessDate: report.businessDate,
         shortLabel: short,
@@ -317,13 +320,8 @@ class ReportService {
       countSum += report.saleCount;
     }
 
-    final label = title ??
-        (days <= 7
-            ? 'Last $days days'
-            : 'Last $days days');
-
     return PeriodSeries(
-      title: label,
+      title: title ?? 'Last $days days',
       days: buckets,
       salesTotal: salesSum,
       expensesTotal: expenseSum,
@@ -334,8 +332,7 @@ class ReportService {
 
   Future<PeriodSeries> thisWeekSeries([DateTime? around]) async {
     final d = around ?? DateTime.now();
-    // Monday of this week → today (or full 7 days of the week)
-    final weekday = d.weekday; // Mon=1
+    final weekday = d.weekday;
     final monday = DateTime(d.year, d.month, d.day)
         .subtract(Duration(days: weekday - 1));
     final sunday = monday.add(const Duration(days: 6));
@@ -343,14 +340,9 @@ class ReportService {
         ? DateTime(d.year, d.month, d.day)
         : sunday;
     final days = end.difference(monday).inDays + 1;
-    return salesSeries(
-      days: days,
-      end: end,
-      title: 'This week',
-    );
+    return salesSeries(days: days, end: end, title: 'This week');
   }
 
-  /// Full Mon–Sun for the week containing [around], including future zeros.
   Future<PeriodSeries> calendarWeekSeries([DateTime? around]) async {
     final d = around ?? DateTime.now();
     final weekday = d.weekday;
@@ -368,11 +360,7 @@ class ReportService {
     final first = DateTime(d.year, d.month, 1);
     final today = DateTime(d.year, d.month, d.day);
     final days = today.difference(first).inDays + 1;
-    return salesSeries(
-      days: days,
-      end: today,
-      title: 'This month',
-    );
+    return salesSeries(days: days, end: today, title: 'This month');
   }
 
   Future<PeriodSeries> last30DaysSeries([DateTime? end]) async {
@@ -383,7 +371,63 @@ class ReportService {
     );
   }
 
-  /// Products sold on [day] with quantities — for short PDF reports.
+  /// Expense totals by category for [day].
+  Future<List<CategoryTotal>> expensesByCategory([DateTime? day]) async {
+    final d = day ?? DateTime.now();
+    final range = DayRange.of(d);
+    final db = await _database.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT category, COALESCE(SUM(amount), 0) AS total
+      FROM expenses
+      WHERE created_at >= ? AND created_at < ?
+      GROUP BY category
+      ORDER BY total DESC
+      ''',
+      [range.startIso, range.endIso],
+    );
+    return [
+      for (final r in rows)
+        CategoryTotal(
+          category: (r['category'] as String?) ?? 'misc',
+          total: Money.round((r['total'] as num?)?.toDouble() ?? 0),
+        ),
+    ];
+  }
+
+  /// Products at or below minimum_stock (active only).
+  Future<List<StockRow>> lowStockItems() async {
+    final db = await _database.database;
+    final products = await db.query(
+      'products',
+      where: 'active = 1',
+      orderBy: 'name COLLATE NOCASE ASC',
+    );
+    final low = <StockRow>[];
+    for (final p in products) {
+      final id = p['id'] as String;
+      final min = (p['minimum_stock'] as num?)?.toDouble() ?? 0;
+      final stockRows = await db.rawQuery(
+        'SELECT COALESCE(SUM(quantity), 0) AS q FROM stock_movements WHERE product_id = ?',
+        [id],
+      );
+      final qty = (stockRows.first['q'] as num?)?.toDouble() ?? 0;
+      if (qty <= min) {
+        low.add(
+          StockRow(
+            productId: id,
+            name: p['name'] as String? ?? '',
+            quantity: qty,
+            costPrice: (p['cost_price'] as num?)?.toDouble(),
+            sellingPrice: (p['selling_price'] as num?)?.toDouble() ?? 0,
+          ),
+        );
+      }
+    }
+    low.sort((a, b) => a.quantity.compareTo(b.quantity));
+    return low;
+  }
+
   Future<List<StockRow>> itemsSoldOnDay([DateTime? day]) async {
     final d = day ?? DateTime.now();
     final range = DayRange.of(d);
