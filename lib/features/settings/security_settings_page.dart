@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../main.dart' show themeController;
 import '../../services/policy_service.dart';
 import '../../services/security_service.dart';
 
@@ -139,17 +138,6 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
       );
-    }
-  }
-
-  String _themeLabel(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.light:
-        return 'Light';
-      case ThemeMode.dark:
-        return 'Dark';
-      case ThemeMode.system:
-        return 'System';
     }
   }
 
