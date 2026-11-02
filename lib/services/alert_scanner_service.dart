@@ -1,12 +1,14 @@
 import '../core/database/app_database.dart';
 import '../core/utils/money.dart';
+import 'collection_service.dart';
+import 'day_closing_service.dart';
 import 'debtor_service.dart';
 import 'inventory_service.dart';
 import 'notification_service.dart';
 import 'policy_service.dart';
 import 'system_notification_service.dart';
 
-/// Scans stock and debt; writes in-app notifications and Android/iOS tray alerts.
+/// Scans stock, debt, promises, and open days; in-app + system tray alerts.
 class AlertScannerService {
   AlertScannerService({
     InventoryService? inventory,
@@ -14,22 +16,32 @@ class AlertScannerService {
     NotificationService? notifications,
     PolicyService? policy,
     AppDatabase? database,
+    CollectionService? collection,
+    DayClosingService? dayClose,
   })  : _inventory = inventory ?? InventoryService(),
         _debtors = debtors ?? DebtorService(),
         _notifications = notifications ?? NotificationService(),
         _policy = policy ?? PolicyService(),
-        _database = database ?? AppDatabase.instance;
+        _database = database ?? AppDatabase.instance,
+        _collection = collection ?? CollectionService(),
+        _dayClose = dayClose ?? DayClosingService();
 
   final InventoryService _inventory;
   final DebtorService _debtors;
   final NotificationService _notifications;
   final PolicyService _policy;
   final AppDatabase _database;
+  final CollectionService _collection;
+  final DayClosingService _dayClose;
 
   Future<int> scan() async {
+    await SystemNotificationService.instance.init(requestPermission: true);
+
     var created = 0;
     created += await _scanStock();
     created += await _scanDebt();
+    created += await _scanPromisesToday();
+    created += await _scanUnclosedDays();
     return created;
   }
 
@@ -99,7 +111,8 @@ class AlertScannerService {
   Future<int> _scanDebt() async {
     var created = 0;
     final overdueDays = await _policy.getOverdueDebtDays();
-    final list = await _debtors.listOutstanding(limit: 200, overdueDays: overdueDays);
+    final list =
+        await _debtors.listOutstanding(limit: 200, overdueDays: overdueDays);
 
     for (final d in list) {
       if (d.balance <= 0) continue;
@@ -110,7 +123,8 @@ class AlertScannerService {
           : 'debt_outstanding_${d.customerId}';
 
       if (isOverdue) {
-        await _notifications.markReadByDedupeKey('debt_outstanding_${d.customerId}');
+        await _notifications
+            .markReadByDedupeKey('debt_outstanding_${d.customerId}');
         final isNew = await _notifications.pushIfNew(
           category: 'debt',
           priority: 'warning',
@@ -136,7 +150,8 @@ class AlertScannerService {
           );
         }
       } else {
-        await _notifications.markReadByDedupeKey('debt_overdue_${d.customerId}');
+        await _notifications
+            .markReadByDedupeKey('debt_overdue_${d.customerId}');
         final isNew = await _notifications.pushIfNew(
           category: 'debt',
           priority: d.balance >= 5000 ? 'warning' : 'info',
@@ -159,6 +174,78 @@ class AlertScannerService {
         }
       }
     }
+    return created;
+  }
+
+  Future<int> _scanPromisesToday() async {
+    var created = 0;
+    try {
+      final due = await _collection.listPromisesDueOn(DateTime.now());
+      if (due.isEmpty) {
+        await _notifications.markReadByDedupeKey('promises_today');
+        return 0;
+      }
+      final names =
+          due.map((p) => p.customerName ?? p.customerId).take(3).join(', ');
+      final more = due.length > 3 ? ' +${due.length - 3}' : '';
+      final body =
+          '${due.length} promise(s) due today: $names$more. Call or SMS.';
+      final isNew = await _notifications.pushIfNew(
+        category: 'debt',
+        priority: 'warning',
+        title: 'Promises due today',
+        body: body,
+        deepLink: 'customers',
+        entityType: 'promise',
+        entityId: 'today',
+        dedupeKey: 'promises_today',
+      );
+      if (isNew) {
+        created++;
+        await SystemNotificationService.instance.show(
+          id: 'promises_today'.hashCode & 0x7fffffff,
+          title: 'Promises due today',
+          body: body,
+          category: 'promise',
+          priority: 'warning',
+        );
+      }
+    } catch (_) {}
+    return created;
+  }
+
+  Future<int> _scanUnclosedDays() async {
+    var created = 0;
+    try {
+      final open = await _dayClose.unclosedDaysWithActivity(lookbackDays: 3);
+      if (open.isEmpty) {
+        await _notifications.markReadByDedupeKey('day_not_closed');
+        return 0;
+      }
+      final first = open.first;
+      final body =
+          'Day ${first.businessDate} not closed — sales ${Money.format(first.salesTotal)}.';
+      final isNew = await _notifications.pushIfNew(
+        category: 'business',
+        priority: 'info',
+        title: 'Day not closed',
+        body: body,
+        deepLink: 'home',
+        entityType: 'day',
+        entityId: first.businessDate,
+        dedupeKey: 'day_not_closed',
+      );
+      if (isNew) {
+        created++;
+        await SystemNotificationService.instance.show(
+          id: 'day_not_closed'.hashCode & 0x7fffffff,
+          title: 'Day not closed',
+          body: body,
+          category: 'day',
+          priority: 'info',
+        );
+      }
+    } catch (_) {}
     return created;
   }
 
