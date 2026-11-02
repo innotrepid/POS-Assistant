@@ -45,14 +45,17 @@ class DaySummary {
   double mpesaVariance(double countedMpesa) {
     return Money.round(countedMpesa - expectedMpesa);
   }
+
+  bool get hasActivity =>
+      saleCount > 0 || salesTotal > 0 || expensesTotal > 0;
 }
 
 class DayClosingService {
   DayClosingService({
     AppDatabase? database,
     Uuid? uuid,
-  }) : _database = database ?? AppDatabase.instance,
-       _uuid = uuid ?? const Uuid();
+  })  : _database = database ?? AppDatabase.instance,
+        _uuid = uuid ?? const Uuid();
 
   final AppDatabase _database;
   final Uuid _uuid;
@@ -139,6 +142,67 @@ class DayClosingService {
       isClosed: closings.isNotEmpty,
       closing: closings.isEmpty ? null : closings.first,
     );
+  }
+
+  /// Past days (not today) with sales/expenses that were never closed.
+  Future<List<DaySummary>> unclosedDaysWithActivity({
+    int lookbackDays = 7,
+  }) async {
+    final out = <DaySummary>[];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final limit = lookbackDays.clamp(1, 31);
+    for (var i = 1; i <= limit; i++) {
+      final day = today.subtract(Duration(days: i));
+      final summary = await getSummary(day);
+      if (summary.isClosed) continue;
+      if (!summary.hasActivity) continue;
+      out.add(summary);
+    }
+    return out;
+  }
+
+  /// Plain-text day summary for share sheet / SMS / WhatsApp.
+  String formatShareText(
+    DaySummary summary, {
+    String shopName = 'Mercate',
+    bool swahili = false,
+  }) {
+    final buf = StringBuffer();
+    if (swahili) {
+      buf.writeln('Muhtasari wa siku — $shopName');
+      buf.writeln('Tarehe: ${summary.businessDate}');
+      buf.writeln(
+        'Hali: ${summary.isClosed ? 'Imefungwa' : 'Haijafungwa'}',
+      );
+      buf.writeln('Mauzo: ${Money.format(summary.salesTotal)} (${summary.saleCount})');
+      buf.writeln('Taslimu: ${Money.format(summary.salesCash)}');
+      buf.writeln('M-Pesa: ${Money.format(summary.salesMpesa)}');
+      if (summary.salesCard > 0) {
+        buf.writeln('Kadi: ${Money.format(summary.salesCard)}');
+      }
+      buf.writeln('Matumizi: ${Money.format(summary.expensesTotal)}');
+      final net = Money.round(summary.salesTotal - summary.expensesTotal);
+      buf.writeln('Neto (mauzo − matumizi): ${Money.format(net)}');
+      buf.writeln('— Mercate');
+    } else {
+      buf.writeln('Day summary — $shopName');
+      buf.writeln('Date: ${summary.businessDate}');
+      buf.writeln('Status: ${summary.isClosed ? 'Closed' : 'Not closed'}');
+      buf.writeln(
+        'Sales: ${Money.format(summary.salesTotal)} (${summary.saleCount})',
+      );
+      buf.writeln('Cash: ${Money.format(summary.salesCash)}');
+      buf.writeln('M-Pesa: ${Money.format(summary.salesMpesa)}');
+      if (summary.salesCard > 0) {
+        buf.writeln('Card: ${Money.format(summary.salesCard)}');
+      }
+      buf.writeln('Expenses: ${Money.format(summary.expensesTotal)}');
+      final net = Money.round(summary.salesTotal - summary.expensesTotal);
+      buf.writeln('Net (sales − expenses): ${Money.format(net)}');
+      buf.writeln('— Mercate');
+    }
+    return buf.toString().trim();
   }
 
   Future<String> closeDay({
