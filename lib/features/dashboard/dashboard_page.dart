@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
+import '../../services/day_closing_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/locale_service.dart';
@@ -35,9 +37,11 @@ class _DashboardPageState extends State<DashboardPage> {
   final _expenses = ExpenseService();
   final _inventory = InventoryService();
   final _profiles = BusinessProfileService.instance;
+  final _dayClose = DayClosingService();
 
   DaySalesReport? _day;
   SpoilageDaySummary _spoilage = SpoilageDaySummary.empty;
+  List<DaySummary> _openDays = const [];
   String _shopName = 'Mercate';
   bool _loading = true;
   String? _error;
@@ -69,11 +73,16 @@ class _DashboardPageState extends State<DashboardPage> {
       final day = await _reports.daySales();
       final spoil = await _inventory.getSpoilageSummary(DateTime.now());
       final name = await _profiles.getBusinessName();
+      List<DaySummary> open = const [];
+      try {
+        open = await _dayClose.unclosedDaysWithActivity(lookbackDays: 7);
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _day = day;
         _spoilage = spoil;
         _shopName = name;
+        _openDays = open;
         _loading = false;
       });
     } catch (e) {
@@ -162,12 +171,50 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  Future<void> _openCloseDay() async {
+  Future<void> _openCloseDay({DateTime? day}) async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const DayClosePage()),
+      MaterialPageRoute<void>(
+        builder: (_) => DayClosePage(day: day),
+      ),
     );
     _load();
     widget.onRefreshShell?.call();
+  }
+
+  DateTime? _parseBusinessDate(String ymd) {
+    final parts = ymd.split('-');
+    if (parts.length != 3) return null;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final d = int.tryParse(parts[2]);
+    if (y == null || m == null || d == null) return null;
+    return DateTime(y, m, d);
+  }
+
+  Future<void> _shareTodaySummary() async {
+    try {
+      final summary = await _dayClose.getSummary(DateTime.now());
+      final text = _dayClose.formatShareText(
+        summary,
+        shopName: _shopName,
+        swahili: localeController.isSwahili,
+      );
+      await Share.share(text, subject: '$_shopName · ${summary.businessDate}');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
+    }
+  }
+
+  Future<void> _shareOpenDay(DaySummary open) async {
+    final text = _dayClose.formatShareText(
+      open,
+      shopName: _shopName,
+      swahili: localeController.isSwahili,
+    );
+    await Share.share(text, subject: '$_shopName · ${open.businessDate}');
   }
 
   @override
@@ -175,11 +222,17 @@ class _DashboardPageState extends State<DashboardPage> {
     final s = localeController.s;
     final scheme = Theme.of(context).colorScheme;
     final day = _day;
+    final sw = localeController.isSwahili;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(s.home),
         actions: [
+          IconButton(
+            tooltip: sw ? 'Shiriki muhtasari' : 'Share day summary',
+            onPressed: _shareTodaySummary,
+            icon: const Icon(Icons.ios_share_outlined),
+          ),
           if (widget.onOpenNotifications != null)
             IconButton(
               onPressed: widget.onOpenNotifications,
@@ -219,6 +272,91 @@ class _DashboardPageState extends State<DashboardPage> {
                               color: scheme.onSurfaceVariant,
                             ),
                       ),
+                      if (_openDays.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        for (final open in _openDays.take(3))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Material(
+                              color: scheme.errorContainer.withValues(
+                                alpha: 0.55,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  10,
+                                  8,
+                                  10,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.warning_amber_rounded,
+                                          color: scheme.onErrorContainer,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            sw
+                                                ? 'Siku haijafungwa: ${open.businessDate}'
+                                                : 'Day not closed: ${open.businessDate}',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: scheme.onErrorContainer,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      sw
+                                          ? 'Mauzo ${Money.format(open.salesTotal)} · '
+                                              '${open.saleCount} mauzo · '
+                                              'Matumizi ${Money.format(open.expensesTotal)}'
+                                          : 'Sales ${Money.format(open.salesTotal)} · '
+                                              '${open.saleCount} sales · '
+                                              'Expenses ${Money.format(open.expensesTotal)}',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: scheme.onErrorContainer,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Wrap(
+                                      spacing: 8,
+                                      children: [
+                                        FilledButton.tonal(
+                                          onPressed: () {
+                                            final d = _parseBusinessDate(
+                                              open.businessDate,
+                                            );
+                                            _openCloseDay(day: d);
+                                          },
+                                          child: Text(
+                                            sw ? 'Funga siku' : 'Close day',
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => _shareOpenDay(open),
+                                          child: Text(
+                                            sw ? 'Shiriki' : 'Share',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                       const SizedBox(height: 16),
                       Row(
                         children: [
@@ -323,9 +461,17 @@ class _DashboardPageState extends State<DashboardPage> {
                       ],
                       const SizedBox(height: 16),
                       FilledButton.icon(
-                        onPressed: _openCloseDay,
+                        onPressed: () => _openCloseDay(),
                         icon: const Icon(Icons.nightlight_round),
                         label: Text(s.endOfDay),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _shareTodaySummary,
+                        icon: const Icon(Icons.ios_share_outlined),
+                        label: Text(
+                          sw ? 'Shiriki muhtasari wa leo' : 'Share today summary',
+                        ),
                       ),
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
