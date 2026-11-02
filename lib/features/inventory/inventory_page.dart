@@ -4,6 +4,7 @@ import '../../core/models/product.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/inventory_service.dart';
+import '../../services/locale_service.dart';
 import '../../services/starter_catalogue_service.dart';
 import '../suppliers/receive_purchase_page.dart';
 
@@ -93,8 +94,8 @@ class _InventoryPageState extends State<InventoryPage> {
     return q.toStringAsFixed(1);
   }
 
-  /// Always shows a confirmation dialog before deleting.
   Future<void> _deleteProduct(Product product) async {
+    final s = localeController.s;
     final qty = _stock[product.id] ?? 0;
     final lines = <String>[
       'Remove "${product.name}" from stock and sales?',
@@ -107,10 +108,6 @@ class _InventoryPageState extends State<InventoryPage> {
         '• Current quantity on hand: ${_fmtQty(qty)} ${product.unit}',
       );
     }
-    lines.addAll([
-      '',
-      'You can add it again later (including from the starter list).',
-    ]);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -121,12 +118,12 @@ class _InventoryPageState extends State<InventoryPage> {
           color: Theme.of(context).colorScheme.error,
           size: 36,
         ),
-        title: const Text('Delete this product?'),
+        title: Text(s.deleteProductTitle),
         content: Text(lines.join('\n')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Keep product'),
+            child: Text(s.keepProduct),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -134,7 +131,7 @@ class _InventoryPageState extends State<InventoryPage> {
               foregroundColor: Theme.of(context).colorScheme.onError,
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Yes, delete'),
+            child: Text(s.yesDelete),
           ),
         ],
       ),
@@ -150,7 +147,7 @@ class _InventoryPageState extends State<InventoryPage> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${product.name} removed')),
+        SnackBar(content: Text(s.productRemoved(product.name))),
       );
     } catch (e) {
       if (!mounted) return;
@@ -161,6 +158,7 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> _editProduct(Product product) async {
+    final s = localeController.s;
     final profile = await _profiles.getProfile();
     final nameCtrl = TextEditingController(text: product.name);
     final priceCtrl =
@@ -176,7 +174,7 @@ class _InventoryPageState extends State<InventoryPage> {
         return StatefulBuilder(
           builder: (context, setLocal) {
             return AlertDialog(
-              title: const Text('Edit product'),
+              title: Text(s.editProduct),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -184,13 +182,12 @@ class _InventoryPageState extends State<InventoryPage> {
                   children: [
                     TextField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Name'),
+                      decoration: InputDecoration(labelText: s.name),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: priceCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Selling price'),
+                      decoration: InputDecoration(labelText: s.sellingPrice),
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
@@ -198,17 +195,13 @@ class _InventoryPageState extends State<InventoryPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: costCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Cost (optional)'),
+                      decoration: InputDecoration(labelText: s.costOptional),
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      'Unit',
-                      style: Theme.of(context).textTheme.labelLarge,
-                    ),
+                    Text(s.unit, style: Theme.of(context).textTheme.labelLarge),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
@@ -232,15 +225,15 @@ class _InventoryPageState extends State<InventoryPage> {
                   style: TextButton.styleFrom(
                     foregroundColor: Theme.of(context).colorScheme.error,
                   ),
-                  child: const Text('Delete'),
+                  child: Text(s.delete),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, 'cancel'),
-                  child: const Text('Cancel'),
+                  child: Text(s.cancel),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(context, 'save'),
-                  child: const Text('Save'),
+                  child: Text(s.save),
                 ),
               ],
             );
@@ -270,7 +263,7 @@ class _InventoryPageState extends State<InventoryPage> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Product updated')),
+        SnackBar(content: Text(s.productUpdated)),
       );
     } catch (e) {
       if (!mounted) return;
@@ -303,6 +296,7 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> _spoilage(Product product) async {
+    final s = localeController.s;
     final qtyCtrl = TextEditingController();
     var reason = kSpoilageReasons.first;
     final otherCtrl = TextEditingController();
@@ -310,7 +304,7 @@ class _InventoryPageState extends State<InventoryPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
-          title: Text('Spoilage · ${product.name}'),
+          title: Text('${s.spoilage} · ${product.name}'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -319,7 +313,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 TextField(
                   controller: qtyCtrl,
                   decoration: InputDecoration(
-                    labelText: 'Quantity (${product.unit})',
+                    labelText: '${s.quantity} (${product.unit})',
                   ),
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
@@ -327,7 +321,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   autofocus: true,
                 ),
                 const SizedBox(height: 12),
-                Text('Reason', style: Theme.of(context).textTheme.labelLarge),
+                Text(s.reason, style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
@@ -345,7 +339,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: otherCtrl,
-                    decoration: const InputDecoration(labelText: 'Describe'),
+                    decoration: InputDecoration(labelText: s.describe),
                   ),
                 ],
               ],
@@ -354,11 +348,11 @@ class _InventoryPageState extends State<InventoryPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
+              child: Text(s.cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Record'),
+              child: Text(s.record),
             ),
           ],
         ),
@@ -374,7 +368,7 @@ class _InventoryPageState extends State<InventoryPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Spoilage recorded for ${product.name}')),
+        SnackBar(content: Text('${s.spoilage} · ${product.name}')),
       );
       await _load();
     } catch (e) {
@@ -393,6 +387,7 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> _showAddProduct() async {
+    final s = localeController.s;
     final profile = await _profiles.getProfile();
     final nameCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
@@ -408,7 +403,7 @@ class _InventoryPageState extends State<InventoryPage> {
         return StatefulBuilder(
           builder: (context, setLocal) {
             return AlertDialog(
-              title: const Text('Add product'),
+              title: Text(s.addProduct),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -416,14 +411,13 @@ class _InventoryPageState extends State<InventoryPage> {
                   children: [
                     TextField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Name'),
+                      decoration: InputDecoration(labelText: s.name),
                       autofocus: true,
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: priceCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Selling price'),
+                      decoration: InputDecoration(labelText: s.sellingPrice),
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
@@ -431,14 +425,13 @@ class _InventoryPageState extends State<InventoryPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: costCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Cost (optional)'),
+                      decoration: InputDecoration(labelText: s.costOptional),
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text('Unit', style: Theme.of(context).textTheme.labelLarge),
+                    Text(s.unit, style: Theme.of(context).textTheme.labelLarge),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
@@ -457,8 +450,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     TextField(
                       controller: qtyCtrl,
                       decoration: InputDecoration(
-                        labelText: 'Opening quantity (optional)',
-                        helperText: 'e.g. 2 $selectedUnit',
+                        labelText: s.openingQtyOptional,
                         border: const OutlineInputBorder(),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(
@@ -471,11 +463,11 @@ class _InventoryPageState extends State<InventoryPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
+                  child: Text(s.cancel),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Save'),
+                  child: Text(s.save),
                 ),
               ],
             );
@@ -515,20 +507,21 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> _manualAddStock(Product product) async {
+    final s = localeController.s;
     final qtyController = TextEditingController(text: '1');
     final costController =
         TextEditingController(text: product.costPrice?.toString() ?? '');
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Bought today · ${product.name}'),
+        title: Text('${s.boughtToday} · ${product.name}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: qtyController,
               decoration: InputDecoration(
-                labelText: 'Quantity (${product.unit})',
+                labelText: '${s.quantity} (${product.unit})',
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               autofocus: true,
@@ -536,8 +529,7 @@ class _InventoryPageState extends State<InventoryPage> {
             const SizedBox(height: 12),
             TextField(
               controller: costController,
-              decoration:
-                  const InputDecoration(labelText: 'Unit cost (optional)'),
+              decoration: InputDecoration(labelText: s.unitCostOptional),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
           ],
@@ -545,11 +537,11 @@ class _InventoryPageState extends State<InventoryPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(s.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Add'),
+            child: Text(s.add),
           ),
         ],
       ),
@@ -573,6 +565,7 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> _addStockFlow(Product product) async {
+    final s = localeController.s;
     if (!_suppliersEnabled) {
       await _manualAddStock(product);
       return;
@@ -580,38 +573,35 @@ class _InventoryPageState extends State<InventoryPage> {
     final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Add stock · ${product.name}'),
-        content: const Text('How did the stock arrive?'),
+        title: Text('${s.stock} · ${product.name}'),
+        content: Text(s.howStockArrived),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'manual'),
-            child: const Text('Bought today'),
+            child: Text(s.boughtToday),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, 'supplier'),
-            child: const Text('From supplier'),
+            child: Text(s.fromSupplier),
           ),
         ],
       ),
     );
-    if (choice == 'supplier') {
-      await _openReceiveGoods();
-      return;
-    }
     if (choice == 'manual') await _manualAddStock(product);
+    if (choice == 'supplier') await _openReceiveGoods();
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final s = localeController.s;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Stock'),
+        title: Text(s.stock),
         actions: [
           if (_suppliersEnabled)
             IconButton(
-              tooltip: 'Receive goods',
+              tooltip: s.receiveGoods,
               icon: const Icon(Icons.local_shipping_outlined),
               onPressed: _openReceiveGoods,
             ),
@@ -625,11 +615,10 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
             ),
           IconButton(
-            tooltip: 'Add any missing starter items',
+            tooltip: s.addMissingStarter,
             icon: const Icon(Icons.playlist_add),
             onPressed: _seedStarter,
           ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -638,18 +627,13 @@ class _InventoryPageState extends State<InventoryPage> {
         child: FloatingActionButton.extended(
           onPressed: _showAddProduct,
           icon: const Icon(Icons.add),
-          label: const Text('Add item'),
+          label: Text(s.addItem),
         ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(_error!, textAlign: TextAlign.center),
-                  ),
-                )
+              ? Center(child: Text(_error!))
               : _products.isEmpty
                   ? Center(
                       child: Padding(
@@ -657,22 +641,21 @@ class _InventoryPageState extends State<InventoryPage> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
-                              'No products yet. Tap Add item, or load starter catalogue.',
+                            Text(
+                              s.noProductsYet,
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 16),
-                            FilledButton.icon(
+                            FilledButton.tonal(
                               onPressed: _seedStarter,
-                              icon: const Icon(Icons.playlist_add),
-                              label: const Text('Load starter catalogue'),
+                              child: Text(s.loadStarter),
                             ),
                           ],
                         ),
                       ),
                     )
                   : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 160),
+                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 120),
                       itemCount: _products.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, index) {
@@ -681,54 +664,40 @@ class _InventoryPageState extends State<InventoryPage> {
                         final low =
                             p.minimumStock > 0 && qty <= p.minimumStock;
                         return ListTile(
-                          onTap: () => _editProduct(p),
-                          onLongPress: () => _deleteProduct(p),
                           title: Text(
                             p.name,
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(
-                            '${Money.format(p.sellingPrice)} · $qty ${p.unit}${low ? ' · LOW' : ''}',
-                            style: TextStyle(
-                              color: low ? scheme.error : null,
-                            ),
+                            '${_fmtQty(qty)} ${p.unit} · ${Money.format(p.sellingPrice)}',
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              if (low)
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Theme.of(context).colorScheme.error,
+                                  size: 20,
+                                ),
                               IconButton(
+                                tooltip: s.boughtToday,
                                 icon: const Icon(Icons.add_box_outlined),
-                                tooltip: 'Bought today',
                                 onPressed: () => _addStockFlow(p),
                               ),
-                              if (qty > 0)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.eco_outlined,
-                                    color: scheme.error,
-                                  ),
-                                  tooltip: 'Spoilage',
-                                  onPressed: () => _spoilage(p),
-                                ),
-                              PopupMenuButton<String>(
-                                tooltip: 'More',
-                                onSelected: (value) {
-                                  if (value == 'edit') _editProduct(p);
-                                  if (value == 'delete') _deleteProduct(p);
-                                },
-                                itemBuilder: (context) => const [
-                                  PopupMenuItem(
-                                    value: 'edit',
-                                    child: Text('Edit'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'delete',
-                                    child: Text('Delete'),
-                                  ),
-                                ],
+                              IconButton(
+                                tooltip: s.spoilage,
+                                icon: const Icon(Icons.eco_outlined),
+                                onPressed: () => _spoilage(p),
+                              ),
+                              IconButton(
+                                tooltip: s.more,
+                                icon: const Icon(Icons.more_vert),
+                                onPressed: () => _editProduct(p),
                               ),
                             ],
                           ),
+                          onTap: () => _editProduct(p),
                         );
                       },
                     ),
