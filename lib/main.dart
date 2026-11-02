@@ -26,9 +26,6 @@ import 'services/security_service.dart';
 import 'services/system_notification_service.dart';
 import 'services/theme_service.dart';
 
-final themeController = ThemeController();
-final localeController = LocaleController();
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FlutterError.onError = (details) {

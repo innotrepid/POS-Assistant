@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../main.dart' show localeController, themeController;
 import '../../services/business_profile_service.dart';
+import '../../services/locale_service.dart';
 import '../../services/theme_service.dart';
 import 'backup_settings_page.dart';
 import 'business_profile_page.dart';
@@ -61,13 +61,10 @@ class _SettingsPageState extends State<SettingsPage> {
     await localeController.setLanguageCode(code);
     setState(() => _lang = localeController.code);
     if (!mounted) return;
-    final s = localeController.s;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          code == 'sw'
-              ? 'Lugha: Kiswahili'
-              : 'Language: English',
+          code == 'sw' ? 'Lugha: Kiswahili' : 'Language: English',
         ),
       ),
     );
@@ -116,11 +113,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: Text(s.businessProfile),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.of(context).push(
+                    Navigator.of(context)
+                        .push(
                       MaterialPageRoute<void>(
                         builder: (_) => const BusinessProfilePage(),
                       ),
-                    ).then((_) => _load());
+                    )
+                        .then((_) => _load());
                   },
                 ),
                 const Divider(height: 1),
