@@ -6,6 +6,7 @@ import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/pdf_report_builder.dart';
 import '../../services/report_service.dart';
+import 'trends_page.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -122,6 +123,12 @@ class _ReportsPageState extends State<ReportsPage> {
     }
   }
 
+  void _openTrends() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const TrendsPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final day = _day;
@@ -132,6 +139,11 @@ class _ReportsPageState extends State<ReportsPage> {
       appBar: AppBar(
         title: const Text('Reports'),
         actions: [
+          IconButton(
+            tooltip: 'Week & month graphs',
+            icon: const Icon(Icons.show_chart),
+            onPressed: _openTrends,
+          ),
           IconButton(
             tooltip: 'Preview PDF',
             icon: const Icon(Icons.picture_as_pdf_outlined),
@@ -148,7 +160,12 @@ class _ReportsPageState extends State<ReportsPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_error!),
+                  ),
+                )
               : day == null
                   ? const Center(child: Text('No data'))
                   : ListView(
@@ -165,6 +182,22 @@ class _ReportsPageState extends State<ReportsPage> {
                           _shopName,
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
+                        const SizedBox(height: 12),
+                        Card(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primaryContainer
+                              .withOpacity(0.4),
+                          child: ListTile(
+                            leading: const Icon(Icons.show_chart),
+                            title: const Text('Weekly & monthly graphs'),
+                            subtitle: const Text(
+                              'See how sales move across the week and month',
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: _openTrends,
+                          ),
+                        ),
                         const SizedBox(height: 14),
                         GlassPanel(
                           borderRadius: 18,
@@ -174,21 +207,37 @@ class _ReportsPageState extends State<ReportsPage> {
                             children: [
                               Text(
                                 'Sales today',
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 10),
-                              _row('Sales total', Money.format(day.salesTotal), bold: true),
+                              _row('Sales total', Money.format(day.salesTotal),
+                                  bold: true),
                               _row('Cash', Money.format(day.cash)),
                               _row('M-Pesa', Money.format(day.mpesa)),
-                              if (day.card > 0) _row('Card', Money.format(day.card)),
-                              _row('New credit (deni)', Money.format(day.creditTotal)),
+                              if (day.card > 0)
+                                _row('Card', Money.format(day.card)),
+                              _row(
+                                'New credit (deni)',
+                                Money.format(day.creditTotal),
+                              ),
                               _row('Sale count', '${day.saleCount}'),
                               const Divider(height: 20),
-                              _row('Est. cost of goods', Money.format(day.estimatedCost)),
-                              _row('Est. gross profit', Money.format(day.grossProfit), bold: true),
-                              _row('Expenses', Money.format(day.expensesTotal)),
+                              _row(
+                                'Est. cost of goods',
+                                Money.format(day.estimatedCost),
+                              ),
+                              _row(
+                                'Est. gross profit',
+                                Money.format(day.grossProfit),
+                                bold: true,
+                              ),
+                              _row(
+                                'Expenses',
+                                Money.format(day.expensesTotal),
+                              ),
                             ],
                           ),
                         ),
@@ -201,13 +250,18 @@ class _ReportsPageState extends State<ReportsPage> {
                             children: [
                               Text(
                                 'Stock on hand',
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 8),
                               _row('Products', '${_stock.length}'),
-                              _row('Value at cost', Money.format(stockValue), bold: true),
+                              _row(
+                                'Value at cost',
+                                Money.format(stockValue),
+                                bold: true,
+                              ),
                               const SizedBox(height: 6),
                               Text(
                                 'PDF lists only items sold today, not the full catalogue.',
@@ -225,12 +279,17 @@ class _ReportsPageState extends State<ReportsPage> {
                             children: [
                               Text(
                                 'Who owes you',
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 8),
-                              _row('Outstanding', Money.format(debtorsTotal), bold: true),
+                              _row(
+                                'Outstanding',
+                                Money.format(debtorsTotal),
+                                bold: true,
+                              ),
                               if (_debtors.isEmpty)
                                 const Padding(
                                   padding: EdgeInsets.only(top: 6),
@@ -242,10 +301,14 @@ class _ReportsPageState extends State<ReportsPage> {
                                         dense: true,
                                         contentPadding: EdgeInsets.zero,
                                         title: Text(d.name),
-                                        subtitle: d.phone != null ? Text(d.phone!) : null,
+                                        subtitle: d.phone != null
+                                            ? Text(d.phone!)
+                                            : null,
                                         trailing: Text(
                                           Money.format(d.balance),
-                                          style: const TextStyle(fontWeight: FontWeight.w700),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -262,9 +325,10 @@ class _ReportsPageState extends State<ReportsPage> {
                               children: [
                                 Text(
                                   'What you owe suppliers',
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 8),
                                 ..._creditors.take(6).map(
@@ -274,7 +338,9 @@ class _ReportsPageState extends State<ReportsPage> {
                                         title: Text(c.name),
                                         trailing: Text(
                                           Money.format(c.balance),
-                                          style: const TextStyle(fontWeight: FontWeight.w700),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -286,8 +352,12 @@ class _ReportsPageState extends State<ReportsPage> {
                         FilledButton.icon(
                           onPressed: _exporting ? null : _sharePdf,
                           icon: const Icon(Icons.picture_as_pdf),
-                          label: Text(_exporting ? 'Preparing…' : 'Share PDF report'),
-                          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                          label: Text(
+                            _exporting ? 'Preparing…' : 'Share PDF report',
+                          ),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                          ),
                         ),
                       ],
                     ),
@@ -302,7 +372,9 @@ class _ReportsPageState extends State<ReportsPage> {
           Expanded(child: Text(label)),
           Text(
             value,
-            style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w600),
+            style: TextStyle(
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+            ),
           ),
         ],
       ),
