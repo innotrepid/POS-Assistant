@@ -19,14 +19,14 @@ class StarterCatalogueService {
     return StarterCatalogues.forProfile(profile.id).length;
   }
 
-  /// Adds any starter items that are not already in stock (by name).
-  /// Safe to run more than once — never creates a duplicate name.
+  /// Adds any starter items that are not already **active** in stock (by name).
+  /// Deleted (inactive) items can be re-added from the starter list.
   Future<int> seedIfEmpty({BusinessProfileId? profileId}) async {
     final id = profileId ?? (await _profiles.getProfile()).id;
     final seeds = StarterCatalogues.forProfile(id);
     if (seeds.isEmpty) return 0;
 
-    final existing = await _inventory.getAllProducts(activeOnly: false);
+    final existing = await _inventory.getAllProducts(activeOnly: true);
     final existingNames = {
       for (final p in existing) p.name.trim().toLowerCase(),
     };
@@ -52,12 +52,12 @@ class StarterCatalogueService {
     return count;
   }
 
-  /// How many starter items are still missing from inventory.
+  /// How many starter items are still missing from **active** inventory.
   Future<int> missingCount({BusinessProfileId? profileId}) async {
     final id = profileId ?? (await _profiles.getProfile()).id;
     final seeds = StarterCatalogues.forProfile(id);
     if (seeds.isEmpty) return 0;
-    final existing = await _inventory.getAllProducts(activeOnly: false);
+    final existing = await _inventory.getAllProducts(activeOnly: true);
     final existingNames = {
       for (final p in existing) p.name.trim().toLowerCase(),
     };

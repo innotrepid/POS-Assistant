@@ -175,20 +175,38 @@ class InventoryService {
     );
   }
 
-  Future<void> deactivateProduct(String id) async {
+  /// Remove product from stock list and POS (soft delete).
+  /// Past sales, movements and reports stay intact. Works for starter items too.
+  Future<void> deleteProduct(String id, {String? reason}) async {
+    final product = await getProduct(id);
+    if (product == null) {
+      throw StateError('Product not found.');
+    }
+    if (!product.active) {
+      return;
+    }
+
     final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
     await db.update(
       'products',
-      {'active': 0, 'updated_at': DateTime.now().toIso8601String()},
+      {'active': 0, 'updated_at': now},
       where: 'id = ?',
       whereArgs: [id],
     );
     await _writeAudit(
-      action: 'product_deactivated',
+      action: 'product_deleted',
       entityType: 'product',
       entityId: id,
+      newValue: 'name=${product.name}, active=0',
+      reason: reason?.trim().isEmpty == true
+          ? null
+          : (reason ?? 'Removed from stock list'),
     );
   }
+
+  /// Alias kept for older call sites.
+  Future<void> deactivateProduct(String id) => deleteProduct(id);
 
   Future<double> getStock(String productId) async {
     final db = await _database.database;
