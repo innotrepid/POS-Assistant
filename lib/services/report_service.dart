@@ -84,11 +84,60 @@ class HourlySalesBucket {
   }
 }
 
+/// One calendar day in a week/month series.
+class PeriodBucket {
+  final String businessDate;
+  final String shortLabel;
+  final double salesTotal;
+  final int saleCount;
+  final double expensesTotal;
+  final double estimatedCost;
+  final double grossProfit;
+
+  const PeriodBucket({
+    required this.businessDate,
+    required this.shortLabel,
+    required this.salesTotal,
+    required this.saleCount,
+    required this.expensesTotal,
+    required this.estimatedCost,
+    required this.grossProfit,
+  });
+}
+
+class PeriodSeries {
+  final String title;
+  final List<PeriodBucket> days;
+  final double salesTotal;
+  final double expensesTotal;
+  final double grossProfit;
+  final int saleCount;
+
+  const PeriodSeries({
+    required this.title,
+    required this.days,
+    required this.salesTotal,
+    required this.expensesTotal,
+    required this.grossProfit,
+    required this.saleCount,
+  });
+}
+
 class ReportService {
   ReportService({AppDatabase? database})
       : _database = database ?? AppDatabase.instance;
 
   final AppDatabase _database;
+
+  static const _weekdayShort = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
 
   Future<DaySalesReport> daySales([DateTime? day]) async {
     final d = day ?? DateTime.now();
@@ -216,7 +265,6 @@ class ReportService {
       );
     }
 
-    // Prefer trading hours 6–21; fall back to any hours that have sales.
     final active =
         byHour.keys.where((h) => (byHour[h]?.salesTotal ?? 0) > 0).toList()
           ..sort();
@@ -228,6 +276,111 @@ class ReportService {
         byHour[h] ??
             HourlySalesBucket(hour: h, salesTotal: 0, saleCount: 0),
     ];
+  }
+
+  /// Last [days] calendar days ending on [end] (inclusive), oldest → newest.
+  Future<PeriodSeries> salesSeries({
+    required int days,
+    DateTime? end,
+    String? title,
+  }) async {
+    final last = end ?? DateTime.now();
+    final endDay = DateTime(last.year, last.month, last.day);
+    final startDay = endDay.subtract(Duration(days: days - 1));
+
+    final buckets = <PeriodBucket>[];
+    var salesSum = 0.0;
+    var expenseSum = 0.0;
+    var profitSum = 0.0;
+    var countSum = 0;
+
+    for (var i = 0; i < days; i++) {
+      final d = startDay.add(Duration(days: i));
+      final report = await daySales(d);
+      final wd = d.weekday; // 1=Mon … 7=Sun
+      final short = days <= 7
+          ? _weekdayShort[wd - 1]
+          : '${d.day}';
+      final bucket = PeriodBucket(
+        businessDate: report.businessDate,
+        shortLabel: short,
+        salesTotal: report.salesTotal,
+        saleCount: report.saleCount,
+        expensesTotal: report.expensesTotal,
+        estimatedCost: report.estimatedCost,
+        grossProfit: report.grossProfit,
+      );
+      buckets.add(bucket);
+      salesSum = Money.round(salesSum + report.salesTotal);
+      expenseSum = Money.round(expenseSum + report.expensesTotal);
+      profitSum = Money.round(profitSum + report.grossProfit);
+      countSum += report.saleCount;
+    }
+
+    final label = title ??
+        (days <= 7
+            ? 'Last $days days'
+            : 'Last $days days');
+
+    return PeriodSeries(
+      title: label,
+      days: buckets,
+      salesTotal: salesSum,
+      expensesTotal: expenseSum,
+      grossProfit: profitSum,
+      saleCount: countSum,
+    );
+  }
+
+  Future<PeriodSeries> thisWeekSeries([DateTime? around]) async {
+    final d = around ?? DateTime.now();
+    // Monday of this week → today (or full 7 days of the week)
+    final weekday = d.weekday; // Mon=1
+    final monday = DateTime(d.year, d.month, d.day)
+        .subtract(Duration(days: weekday - 1));
+    final sunday = monday.add(const Duration(days: 6));
+    final end = DateTime(d.year, d.month, d.day).isBefore(sunday)
+        ? DateTime(d.year, d.month, d.day)
+        : sunday;
+    final days = end.difference(monday).inDays + 1;
+    return salesSeries(
+      days: days,
+      end: end,
+      title: 'This week',
+    );
+  }
+
+  /// Full Mon–Sun for the week containing [around], including future zeros.
+  Future<PeriodSeries> calendarWeekSeries([DateTime? around]) async {
+    final d = around ?? DateTime.now();
+    final weekday = d.weekday;
+    final monday = DateTime(d.year, d.month, d.day)
+        .subtract(Duration(days: weekday - 1));
+    return salesSeries(
+      days: 7,
+      end: monday.add(const Duration(days: 6)),
+      title: 'This week (Mon–Sun)',
+    );
+  }
+
+  Future<PeriodSeries> thisMonthSeries([DateTime? around]) async {
+    final d = around ?? DateTime.now();
+    final first = DateTime(d.year, d.month, 1);
+    final today = DateTime(d.year, d.month, d.day);
+    final days = today.difference(first).inDays + 1;
+    return salesSeries(
+      days: days,
+      end: today,
+      title: 'This month',
+    );
+  }
+
+  Future<PeriodSeries> last30DaysSeries([DateTime? end]) async {
+    return salesSeries(
+      days: 30,
+      end: end ?? DateTime.now(),
+      title: 'Last 30 days',
+    );
   }
 
   /// Products sold on [day] with quantities — for short PDF reports.
