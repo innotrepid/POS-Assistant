@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
+import '../../services/excel_report_builder.dart';
 import '../../services/pdf_report_builder.dart';
 import '../../services/report_service.dart';
 import 'trends_page.dart';
@@ -18,12 +19,16 @@ class ReportsPage extends StatefulWidget {
 class _ReportsPageState extends State<ReportsPage> {
   final _reports = ReportService();
   final _pdf = PdfReportBuilder();
+  final _excel = ExcelReportBuilder();
   final _profiles = BusinessProfileService.instance;
 
   DaySalesReport? _day;
   List<StockRow> _stock = [];
+  List<StockRow> _sold = [];
+  List<StockRow> _lowStock = [];
   List<PartyBalanceRow> _debtors = [];
   List<PartyBalanceRow> _creditors = [];
+  List<CategoryTotal> _expenseCats = [];
   String _shopName = 'My shop';
   bool _loading = true;
   bool _exporting = false;
@@ -43,15 +48,21 @@ class _ReportsPageState extends State<ReportsPage> {
     try {
       final day = await _reports.daySales();
       final stock = await _reports.stockOnHand();
+      final sold = await _reports.itemsSoldOnDay();
+      final low = await _reports.lowStockItems();
       final debtors = await _reports.debtorsOutstanding();
       final creditors = await _reports.creditorsOutstanding();
+      final exp = await _reports.expensesByCategory();
       final shop = await _profiles.getBusinessName();
       if (!mounted) return;
       setState(() {
         _day = day;
         _stock = stock;
+        _sold = sold;
+        _lowStock = low;
         _debtors = debtors;
         _creditors = creditors;
+        _expenseCats = exp;
         _shopName = shop.isEmpty ? 'My shop' : shop;
         _loading = false;
       });
@@ -69,11 +80,10 @@ class _ReportsPageState extends State<ReportsPage> {
     setState(() => _exporting = true);
     try {
       final day = _day!;
-      final sold = await _reports.itemsSoldOnDay();
       final bytes = await _pdf.buildBusinessReport(
         shopName: _shopName,
         day: day,
-        stock: sold,
+        stock: _sold,
         debtors: _debtors,
         creditors: _creditors,
       );
@@ -91,16 +101,43 @@ class _ReportsPageState extends State<ReportsPage> {
     }
   }
 
+  Future<void> _shareExcel() async {
+    if (_day == null) return;
+    setState(() => _exporting = true);
+    try {
+      final week = await _reports.calendarWeekSeries();
+      final month = await _reports.thisMonthSeries();
+      await _excel.shareWorkbook(
+        shopName: _shopName,
+        day: _day!,
+        itemsSold: _sold,
+        stock: _stock,
+        debtors: _debtors,
+        creditors: _creditors,
+        expensesByCategory: _expenseCats,
+        lowStock: _lowStock,
+        week: week,
+        month: month,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Excel failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   Future<void> _previewPdf() async {
     if (_day == null) return;
     setState(() => _exporting = true);
     try {
       final day = _day!;
-      final sold = await _reports.itemsSoldOnDay();
       final bytes = await _pdf.buildBusinessReport(
         shopName: _shopName,
         day: day,
-        stock: sold,
+        stock: _sold,
         debtors: _debtors,
         creditors: _creditors,
       );
@@ -150,9 +187,9 @@ class _ReportsPageState extends State<ReportsPage> {
             onPressed: _exporting ? null : _previewPdf,
           ),
           IconButton(
-            tooltip: 'Share PDF',
-            icon: const Icon(Icons.share_outlined),
-            onPressed: _exporting ? null : _sharePdf,
+            tooltip: 'Share Excel',
+            icon: const Icon(Icons.table_view_outlined),
+            onPressed: _exporting ? null : _shareExcel,
           ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -241,6 +278,65 @@ class _ReportsPageState extends State<ReportsPage> {
                             ],
                           ),
                         ),
+                        if (_sold.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          GlassPanel(
+                            borderRadius: 18,
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Top items sold today',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 8),
+                                ..._sold.take(8).map(
+                                      (i) => ListTile(
+                                        dense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        title: Text(i.name),
+                                        trailing: Text(
+                                          _qty(i.quantity),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        if (_expenseCats.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          GlassPanel(
+                            borderRadius: 18,
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Expenses by category',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 8),
+                                ..._expenseCats.map(
+                                  (e) => _row(
+                                    e.category,
+                                    Money.format(e.total),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         GlassPanel(
                           borderRadius: 18,
@@ -262,14 +358,45 @@ class _ReportsPageState extends State<ReportsPage> {
                                 Money.format(stockValue),
                                 bold: true,
                               ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'PDF lists only items sold today, not the full catalogue.',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
                             ],
                           ),
                         ),
+                        if (_lowStock.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          GlassPanel(
+                            borderRadius: 18,
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Low stock',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 8),
+                                ..._lowStock.take(10).map(
+                                      (i) => ListTile(
+                                        dense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        title: Text(i.name),
+                                        trailing: Text(
+                                          _qty(i.quantity),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .error,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         GlassPanel(
                           borderRadius: 18,
@@ -350,12 +477,21 @@ class _ReportsPageState extends State<ReportsPage> {
                         ],
                         const SizedBox(height: 20),
                         FilledButton.icon(
-                          onPressed: _exporting ? null : _sharePdf,
-                          icon: const Icon(Icons.picture_as_pdf),
+                          onPressed: _exporting ? null : _shareExcel,
+                          icon: const Icon(Icons.table_view),
                           label: Text(
-                            _exporting ? 'Preparing…' : 'Share PDF report',
+                            _exporting ? 'Preparing…' : 'Share Excel (.xlsx)',
                           ),
                           style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: _exporting ? null : _sharePdf,
+                          icon: const Icon(Icons.picture_as_pdf),
+                          label: const Text('Share PDF report'),
+                          style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(48),
                           ),
                         ),
@@ -379,5 +515,10 @@ class _ReportsPageState extends State<ReportsPage> {
         ],
       ),
     );
+  }
+
+  String _qty(double q) {
+    if (q == q.roundToDouble()) return q.toInt().toString();
+    return q.toStringAsFixed(1);
   }
 }
