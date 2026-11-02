@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/money.dart';
 import '../../services/business_profile_service.dart';
-import '../../services/day_closing_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/locale_service.dart';
@@ -35,7 +33,6 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   final _reports = ReportService();
   final _expenses = ExpenseService();
-  final _closing = DayClosingService();
   final _inventory = InventoryService();
   final _profiles = BusinessProfileService.instance;
 
@@ -47,9 +44,14 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String get _greeting {
     final h = DateTime.now().hour;
-    if (h < 12) return localeController.isSwahili ? 'Habari ya asubuhi' : 'Good morning';
-    if (h < 17) return localeController.isSwahili ? 'Habari ya mchana' : 'Good afternoon';
-    return localeController.isSwahili ? 'Habari ya jioni' : 'Good evening';
+    if (localeController.isSwahili) {
+      if (h < 12) return 'Habari ya asubuhi';
+      if (h < 17) return 'Habari ya mchana';
+      return 'Habari ya jioni';
+    }
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
   }
 
   @override
@@ -100,7 +102,8 @@ class _DashboardPageState extends State<DashboardPage> {
                 TextField(
                   controller: amountCtrl,
                   decoration: InputDecoration(labelText: s.amount),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   autofocus: true,
                 ),
                 const SizedBox(height: 12),
@@ -113,7 +116,14 @@ class _DashboardPageState extends State<DashboardPage> {
                   value: category,
                   decoration: InputDecoration(labelText: s.category),
                   items: [
-                    for (final c in ['transport', 'rent', 'utilities', 'stock', 'misc', 'other'])
+                    for (final c in [
+                      'transport',
+                      'rent',
+                      'utilities',
+                      'stock',
+                      'misc',
+                      'other',
+                    ])
                       DropdownMenuItem(value: c, child: Text(c)),
                   ],
                   onChanged: (v) => setLocal(() => category = v ?? 'misc'),
@@ -122,8 +132,14 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: Text(s.cancel)),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(s.save)),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(s.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(s.save),
+            ),
           ],
         ),
       ),
@@ -133,13 +149,16 @@ class _DashboardPageState extends State<DashboardPage> {
       await _expenses.recordExpense(
         amount: Money.parse(amountCtrl.text),
         category: category,
-        notes: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+        description:
+            noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
       );
       await _load();
       widget.onRefreshShell?.call();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
     }
   }
 
@@ -209,23 +228,26 @@ class _DashboardPageState extends State<DashboardPage> {
                               value: day == null
                                   ? '—'
                                   : Money.format(day.salesTotal),
-                              subtitle: day == null
-                                  ? ''
-                                  : '${day.saleCount}',
+                              subtitle:
+                                  day == null ? '' : '${day.saleCount}',
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: _MetricCard(
                               label: s.cash,
-                              value: day == null ? '—' : Money.format(day.cash),
+                              value: day == null
+                                  ? '—'
+                                  : Money.format(day.cash),
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: _MetricCard(
                               label: s.mpesa,
-                              value: day == null ? '—' : Money.format(day.mpesa),
+                              value: day == null
+                                  ? '—'
+                                  : Money.format(day.mpesa),
                             ),
                           ),
                         ],
@@ -242,7 +264,8 @@ class _DashboardPageState extends State<DashboardPage> {
                                 children: [
                                   Text(
                                     s.expenses,
-                                    style: Theme.of(context).textTheme.labelLarge,
+                                    style:
+                                        Theme.of(context).textTheme.labelLarge,
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
@@ -280,7 +303,9 @@ class _DashboardPageState extends State<DashboardPage> {
                                     Text(s.spoilageToday),
                                     Text(
                                       s.recordsCount(_spoilage.eventCount),
-                                      style: Theme.of(context).textTheme.bodySmall,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall,
                                     ),
                                   ],
                                 ),
