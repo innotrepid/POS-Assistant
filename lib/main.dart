@@ -70,10 +70,13 @@ class MercateApp extends StatelessWidget {
         return MaterialApp(
           title: s.appName,
           debugShowCheckedModeBanner: false,
-          locale: localeController.locale,
+          // Keep Material framework on English. AppStrings handles EN/SW UI copy.
+          // Setting locale to Locale('sw') without flutter_localizations breaks
+          // AppBar back icons, BottomNavigationBar, and many Material widgets
+          // (grey screens, missing icons).
+          locale: const Locale('en'),
           supportedLocales: const [
             Locale('en'),
-            Locale('sw'),
           ],
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
