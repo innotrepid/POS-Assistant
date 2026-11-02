@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/assistant_service.dart';
 import '../../services/collection_service.dart';
+import '../../services/locale_service.dart';
 
 class _ChatMessage {
   final String text;
@@ -30,21 +31,22 @@ class _AssistantPageState extends State<AssistantPage> {
   final _collection = CollectionService();
   final _controller = TextEditingController();
   final _scroll = ScrollController();
-  final List<_ChatMessage> _messages = [
-    const _ChatMessage(
-      text:
-          'Hi — Mercate offline partner.\n'
-          'Ask about sales or debt, or say "Record that John paid 500 cash" / '
-          '"Add 10 of sugar" / "Mary promised Friday". '
-          'Writes only happen after you Confirm.',
-      fromUser: false,
-    ),
-  ];
+  final List<_ChatMessage> _messages = [];
   bool _busy = false;
+  bool _seeded = false;
 
   @override
   void initState() {
     super.initState();
+    if (!_seeded) {
+      _seeded = true;
+      final welcome = localeController.isSwahili
+          ? 'Habari — mshirika wa Mercate bila mtandao.\n'
+              'Uliza kuhusu mauzo au deni. Mabadiliko yataandikwa baada ya kuthibitisha.'
+          : 'Hi — Mercate offline partner.\n'
+              'Ask about sales or debt. Writes only happen after you Confirm.';
+      _messages.add(_ChatMessage(text: welcome, fromUser: false));
+    }
     final q = widget.initialQuestion;
     if (q != null && q.trim().isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _send(q));
@@ -114,15 +116,16 @@ class _AssistantPageState extends State<AssistantPage> {
   }
 
   String _labelResult(String code) {
+    final s = localeController.s;
     return switch (code) {
-      'no_answer' => 'No answer',
-      'spoke' => 'Spoke',
-      'busy' => 'Busy',
-      'wrong_number' => 'Wrong number',
-      'promised_tomorrow' => 'Promised tomorrow',
-      'promised_friday' => 'Promised Friday',
-      'will_pay_later' => 'Will pay later',
-      'paid_partial' => 'Paid partial',
+      'no_answer' => s.outcomeNoAnswer,
+      'spoke' => s.outcomeSpoke,
+      'busy' => s.outcomeBusy,
+      'wrong_number' => s.outcomeWrongNumber,
+      'promised_tomorrow' => s.outcomePromisedTomorrow,
+      'promised_friday' => s.outcomePromisedFriday,
+      'will_pay_later' => s.outcomeWillPayLater,
+      'paid_partial' => s.outcomePaidPartial,
       _ => code,
     };
   }
@@ -133,6 +136,7 @@ class _AssistantPageState extends State<AssistantPage> {
     required String customerName,
   }) async {
     if (customerId == null || !mounted) return;
+    final loc = localeController.s;
     final result = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -145,7 +149,7 @@ class _AssistantPageState extends State<AssistantPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'How did it go with $customerName?',
+                  '${loc.howDidItGo} $customerName',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 12),
@@ -154,15 +158,15 @@ class _AssistantPageState extends State<AssistantPage> {
                   runSpacing: 8,
                   children: [
                     for (final e in [
-                      ('no_answer', 'No answer'),
-                      ('spoke', 'Spoke'),
-                      ('busy', 'Busy'),
-                      ('wrong_number', 'Wrong number'),
-                      ('promised_tomorrow', 'Promised tomorrow'),
-                      ('promised_friday', 'Promised Friday'),
-                      ('will_pay_later', 'Will pay later'),
-                      ('paid_partial', 'Paid partial'),
-                      ('skip', 'Skip log'),
+                      ('no_answer', loc.outcomeNoAnswer),
+                      ('spoke', loc.outcomeSpoke),
+                      ('busy', loc.outcomeBusy),
+                      ('wrong_number', loc.outcomeWrongNumber),
+                      ('promised_tomorrow', loc.outcomePromisedTomorrow),
+                      ('promised_friday', loc.outcomePromisedFriday),
+                      ('will_pay_later', loc.outcomeWillPayLater),
+                      ('paid_partial', loc.outcomePaidPartial),
+                      ('skip', loc.skipLog),
                     ])
                       ActionChip(
                         label: Text(e.$2),
@@ -211,11 +215,14 @@ class _AssistantPageState extends State<AssistantPage> {
   }
 
   Future<void> _runAction(AssistantAction action) async {
+    final loc = localeController.s;
     if (action.kind == AssistantActionKind.cancelWrite) {
       setState(() {
         _messages.add(
-          const _ChatMessage(
-            text: 'Cancelled — nothing was saved.',
+          _ChatMessage(
+            text: localeController.isSwahili
+                ? 'Imeghairiwa — hakuna kilichohifadhiwa.'
+                : 'Cancelled — nothing was saved.',
             fromUser: false,
           ),
         );
@@ -252,7 +259,7 @@ class _AssistantPageState extends State<AssistantPage> {
     final phone = action.phone?.trim();
     if (phone == null || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No phone number')),
+        SnackBar(content: Text(loc.noPhoneNumber)),
       );
       return;
     }
@@ -261,19 +268,18 @@ class _AssistantPageState extends State<AssistantPage> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Open phone dialer?'),
+          title: Text(loc.openDialer),
           content: Text(
-            'Open dialer for ${action.customerName ?? phone}\n$phone\n\n'
-            'Call is not placed until you press Call in the dialer.',
+            '${action.customerName ?? phone}\n$phone\n\n${loc.callNotUntilDialer}',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
+              child: Text(loc.cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Open dialer'),
+              child: Text(loc.openDialer),
             ),
           ],
         ),
@@ -292,21 +298,20 @@ class _AssistantPageState extends State<AssistantPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Open SMS?'),
+        title: Text(loc.openSms),
         content: SingleChildScrollView(
           child: Text(
-            'To: ${action.customerName ?? phone}\n$phone\n\n$body\n\n'
-            'Nothing is sent until you press Send in Messages.',
+            '${action.customerName ?? phone}\n$phone\n\n$body\n\n${loc.smsNotUntilSend}',
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(loc.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Open Messages'),
+            child: Text(loc.openMessages),
           ),
         ],
       ),
@@ -328,14 +333,19 @@ class _AssistantPageState extends State<AssistantPage> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = localeController.s;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mercate Assistant'),
+        title: Text(loc.mercateAssistant),
         actions: [
           IconButton(
-            tooltip: 'Daily brief',
+            tooltip: loc.dailyBrief,
             icon: const Icon(Icons.today_outlined),
-            onPressed: () => _send('How did I do today?'),
+            onPressed: () => _send(
+              localeController.isSwahili
+                  ? 'Nimefanyaje leo?'
+                  : 'How did I do today?',
+            ),
           ),
         ],
       ),
@@ -430,9 +440,9 @@ class _AssistantPageState extends State<AssistantPage> {
                   Expanded(
                     child: TextField(
                       controller: _controller,
-                      decoration: const InputDecoration(
-                        hintText: 'Ask or record a payment…',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        hintText: loc.askOrRecordPayment,
+                        border: const OutlineInputBorder(),
                         isDense: true,
                       ),
                       textInputAction: TextInputAction.send,
