@@ -24,12 +24,14 @@ void main() {
     );
     expect(created.name, 'Amina');
 
-    final db = await appDb.database;
-    final tables = await db.rawQuery(
+    // Settings (language, PIN meta, etc.) live on the meta DB.
+    final meta = await appDb.metaDatabase;
+    final tables = await meta.rawQuery(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'",
     );
     expect(tables, isNotEmpty);
 
+    final db = await appDb.database;
     final info = await db.rawQuery('PRAGMA table_info(customers)');
     final cols = info.map((r) => r['name'] as String).toSet();
     expect(cols.contains('customer_type'), isTrue);
