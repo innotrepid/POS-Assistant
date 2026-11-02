@@ -10,6 +10,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../core/database/app_database.dart';
 import 'business_profile_service.dart';
+import 'storage_permission_service.dart';
 
 class BackupEntry {
   final String id;
@@ -51,18 +52,41 @@ class BackupService {
   BackupService({
     AppDatabase? database,
     BusinessProfileService? profiles,
+    StoragePermissionService? storagePermission,
     this.keepCount = 14,
   })  : _database = database ?? AppDatabase.instance,
-        _profiles = profiles ?? BusinessProfileService.instance;
+        _profiles = profiles ?? BusinessProfileService.instance,
+        _storagePermission =
+            storagePermission ?? StoragePermissionService();
 
   final AppDatabase _database;
   final BusinessProfileService _profiles;
+  final StoragePermissionService _storagePermission;
   final int keepCount;
 
   static const _prefsKeyLastBackup = 'last_local_backup_day';
 
+  /// Ask OS for Documents-wide access when possible (no-op if already granted).
+  Future<StorageAccessResult> ensureStorageAccess({bool request = true}) async {
+    if (await _storagePermission.hasWideAccess()) {
+      return const StorageAccessResult(
+        granted: true,
+        message: 'Storage access already granted',
+      );
+    }
+    if (!request) {
+      return const StorageAccessResult(
+        granted: false,
+        message: 'Storage access not granted yet',
+      );
+    }
+    return _storagePermission.requestWideAccess();
+  }
+
+  Future<bool> openStorageSettings() =>
+      _storagePermission.openSystemSettings();
+
   /// Prefer public Documents so users can open backups in Files / USB.
-  /// Falls back to Download/Mercate, then app storage if scoped storage blocks write.
   Future<Directory> _rootDir() async {
     final candidates = <Directory>[];
 
@@ -137,7 +161,6 @@ class BackupService {
     } catch (_) {}
   }
 
-  /// Human-friendly path for UI (Documents/Mercate/backups when public).
   String friendlyPath(String absolutePath) {
     final norm = absolutePath.replaceAll('\\', '/');
     for (final marker in [
@@ -188,6 +211,10 @@ class BackupService {
   }
 
   Future<BackupResult> backupNow({String reason = 'manual'}) async {
+    try {
+      await ensureStorageAccess(request: true);
+    } catch (_) {}
+
     final now = DateTime.now();
     final stamp =
         '${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_'
