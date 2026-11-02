@@ -1,4 +1,3 @@
-import '../core/database/app_database.dart';
 import '../core/utils/money.dart';
 import 'collection_service.dart';
 import 'day_closing_service.dart';
@@ -15,14 +14,12 @@ class AlertScannerService {
     DebtorService? debtors,
     NotificationService? notifications,
     PolicyService? policy,
-    AppDatabase? database,
     CollectionService? collection,
     DayClosingService? dayClose,
   })  : _inventory = inventory ?? InventoryService(),
         _debtors = debtors ?? DebtorService(),
         _notifications = notifications ?? NotificationService(),
         _policy = policy ?? PolicyService(),
-        _database = database ?? AppDatabase.instance,
         _collection = collection ?? CollectionService(),
         _dayClose = dayClose ?? DayClosingService();
 
@@ -30,7 +27,6 @@ class AlertScannerService {
   final DebtorService _debtors;
   final NotificationService _notifications;
   final PolicyService _policy;
-  final AppDatabase _database;
   final CollectionService _collection;
   final DayClosingService _dayClose;
 
