@@ -61,16 +61,113 @@ class BackupService {
 
   static const _prefsKeyLastBackup = 'last_local_backup_day';
 
+  /// Prefer public Documents so users can open backups in Files / USB.
+  /// Falls back to Download/Mercate, then app storage if scoped storage blocks write.
   Future<Directory> _rootDir() async {
+    final candidates = <Directory>[];
+
+    if (Platform.isAndroid) {
+      candidates.addAll([
+        Directory('/storage/emulated/0/Documents/Mercate/backups'),
+        Directory('/storage/emulated/0/Download/Mercate/backups'),
+        Directory('/sdcard/Documents/Mercate/backups'),
+        Directory('/sdcard/Download/Mercate/backups'),
+      ]);
+      try {
+        final ext = await getExternalStorageDirectory();
+        if (ext != null) {
+          final parts = p.split(ext.path);
+          final idx = parts.indexOf('Android');
+          if (idx > 0) {
+            final shared = p.joinAll(parts.sublist(0, idx));
+            candidates.add(
+              Directory(p.join(shared, 'Documents', 'Mercate', 'backups')),
+            );
+            candidates.add(
+              Directory(p.join(shared, 'Download', 'Mercate', 'backups')),
+            );
+          }
+          candidates.add(Directory(p.join(ext.path, 'Mercate', 'backups')));
+        }
+      } catch (_) {}
+    }
+
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      candidates.add(Directory(p.join(docs.path, 'Mercate', 'backups')));
+      candidates.add(Directory(p.join(docs.path, 'mercate_backups')));
+    } catch (_) {}
+
+    for (final dir in candidates) {
+      try {
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+        final probe = File(p.join(dir.path, '.mercate_write_test'));
+        await probe.writeAsString('ok', flush: true);
+        await probe.delete();
+        await _ensureReadme(dir);
+        return dir;
+      } catch (e) {
+        debugPrint('Backup root skip ${dir.path}: $e');
+      }
+    }
+
     final docs = await getApplicationDocumentsDirectory();
     final dir = Directory(p.join(docs.path, 'mercate_backups'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
+    if (!await dir.exists()) await dir.create(recursive: true);
+    await _ensureReadme(dir);
     return dir;
   }
 
+  Future<void> _ensureReadme(Directory dir) async {
+    try {
+      final readme = File(p.join(dir.path, 'README.txt'));
+      if (await readme.exists()) return;
+      await readme.writeAsString(
+        'Mercate shop backups\n'
+        '===================\n\n'
+        'Each folder is one backup (date_time).\n'
+        'Contains SQLite .db files + manifest.json.\n\n'
+        'Copy the whole folder to USB or another phone to keep a spare.\n'
+        'Restore from Mercate → Settings → Backup.\n\n'
+        'Path tip (Android): Files app → Documents → Mercate → backups\n'
+        'or Download → Mercate → backups if Documents is blocked.\n',
+      );
+    } catch (_) {}
+  }
+
+  /// Human-friendly path for UI (Documents/Mercate/backups when public).
+  String friendlyPath(String absolutePath) {
+    final norm = absolutePath.replaceAll('\\', '/');
+    for (final marker in [
+      '/Documents/Mercate/backups',
+      '/Download/Mercate/backups',
+      '/Documents/Mercate',
+      '/Download/Mercate',
+    ]) {
+      final i = norm.indexOf(marker);
+      if (i >= 0) {
+        return norm.substring(i + 1);
+      }
+    }
+    if (norm.contains('/Android/data/')) {
+      return 'App storage (harder to find) · use Share or Save to Downloads';
+    }
+    return absolutePath;
+  }
+
   Future<String> get backupFolderPath async => (await _rootDir()).path;
+
+  Future<String> get backupFolderFriendlyPath async =>
+      friendlyPath(await backupFolderPath);
+
+  bool isLikelyPublicPath(String absolutePath) {
+    final n = absolutePath.replaceAll('\\', '/');
+    return n.contains('/Documents/Mercate') ||
+        n.contains('/Download/Mercate') ||
+        (n.contains('/Documents/') && n.contains('Mercate'));
+  }
 
   Future<List<String>> _dbFileNames() async {
     final databasesPath = await getDatabasesPath();
@@ -159,9 +256,10 @@ class BackupService {
       schemaVersion: AppDatabase.schemaVersion,
       files: copied,
     );
+    final where = friendlyPath(dest.path);
     return BackupResult(
       entry: entry,
-      message: 'Saved ${copied.length} file(s) · ${entry.label}',
+      message: 'Saved ${copied.length} file(s) · $where',
     );
   }
 
@@ -179,38 +277,46 @@ class BackupService {
             BackupEntry(
               id: map['id'] as String? ?? p.basename(entity.path),
               folderPath: entity.path,
-              createdAt:
-                  DateTime.tryParse(map['createdAt'] as String? ?? '') ??
-                      DateTime.fromMillisecondsSinceEpoch(0),
+              createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+                  DateTime.fromMillisecondsSinceEpoch(0),
               profileId: map['profileId'] as String? ?? '',
               schemaVersion: (map['schemaVersion'] as num?)?.toInt() ?? 0,
-              files: (map['files'] as List<dynamic>?)
-                      ?.map((e) => e.toString())
-                      .toList() ??
-                  const [],
+              files: (map['files'] as List<dynamic>? ?? const [])
+                  .map((e) => '$e')
+                  .toList(),
             ),
           );
-          continue;
-        } catch (_) {}
+        } catch (_) {
+          entries.add(
+            BackupEntry(
+              id: p.basename(entity.path),
+              folderPath: entity.path,
+              createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+              profileId: '',
+              schemaVersion: 0,
+              files: const [],
+            ),
+          );
+        }
+      } else {
+        final id = p.basename(entity.path);
+        entries.add(
+          BackupEntry(
+            id: id,
+            folderPath: entity.path,
+            createdAt: DateTime.tryParse(id.split('_').first) ??
+                DateTime.fromMillisecondsSinceEpoch(0),
+            profileId: '',
+            schemaVersion: 0,
+            files: const [],
+          ),
+        );
       }
-      final id = p.basename(entity.path);
-      entries.add(
-        BackupEntry(
-          id: id,
-          folderPath: entity.path,
-          createdAt: DateTime.tryParse(id.split('_').first) ??
-              DateTime.fromMillisecondsSinceEpoch(0),
-          profileId: '',
-          schemaVersion: 0,
-          files: const [],
-        ),
-      );
     }
     entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return entries;
   }
 
-  /// Zip a backup folder to a temp file (for share / Downloads).
   Future<File> zipBackup(BackupEntry entry) async {
     final dir = Directory(entry.folderPath);
     if (!await dir.exists()) {
@@ -234,7 +340,6 @@ class BackupService {
     return File(zipPath);
   }
 
-  /// System share sheet — Drive, Bluetooth, USB OTG, Files, WhatsApp, etc.
   Future<void> shareBackup(BackupEntry entry) async {
     final zip = await zipBackup(entry);
     await Share.shareXFiles(
@@ -244,7 +349,6 @@ class BackupService {
     );
   }
 
-  /// Copy zip into public Downloads when possible; falls back to app folder.
   Future<String> exportToDownloads(BackupEntry entry) async {
     final zip = await zipBackup(entry);
     final destDir = await _resolveDownloadsDir();
