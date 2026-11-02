@@ -8,6 +8,7 @@ import '../../services/day_closing_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/inventory_service.dart';
 import '../pos/sales_history_page.dart';
+import '../reports/day_close_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final int unreadCount;
@@ -84,68 +85,14 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _closeDay() async {
-    final s = _summary;
-    if (s == null) return;
-    final openingCtrl = TextEditingController(text: '0');
-    final cashCtrl = TextEditingController(text: '0');
-    final expectedMpesa = s.salesMpesa;
-    final expectedCashHint = s.salesCash;
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Close day'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'M-Pesa is taken from sales recorded today '
-                '(${Money.format(expectedMpesa)}) — no need to re-enter it.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: openingCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Opening cash in till',
-                  helperText: 'What was in the till this morning',
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: cashCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Counted cash now',
-                  helperText: 'Cash sales today about ${Money.format(expectedCashHint)}',
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Close day')),
-        ],
-      ),
+    final closed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const DayClosePage()),
     );
-    if (ok != true) return;
-    try {
-      await _dayClose.closeDay(
-        day: DateTime.now(),
-        openingCash: Money.parse(openingCtrl.text),
-        countedCash: Money.parse(cashCtrl.text),
-        countedMpesa: expectedMpesa,
-      );
+    if (closed == true) {
       await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Day closed')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      widget.onRefreshShell?.call();
+    } else {
+      await _load();
     }
   }
 
@@ -367,13 +314,13 @@ class _DashboardPageState extends State<DashboardPage> {
                               Text(
                                 s.isClosed
                                     ? 'Today is locked. Come back tomorrow.'
-                                    : 'Count the till when you are done selling.',
+                                    : 'See the full day report, then close with your PIN.',
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                               const SizedBox(height: 12),
                               FilledButton(
-                                onPressed: s.isClosed ? null : _closeDay,
-                                child: Text(s.isClosed ? 'Day closed' : 'Close day'),
+                                onPressed: _closeDay,
+                                child: Text(s.isClosed ? 'View day report' : 'Close day'),
                               ),
                             ],
                           ),
