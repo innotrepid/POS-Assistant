@@ -383,6 +383,27 @@ class _DebtorsPageState extends State<DebtorsPage> {
     }
   }
 
+  Future<void> _resolvePromise(PromiseToPay pr, {String status = 'kept'}) async {
+    try {
+      await _collection.resolvePromise(pr.id, status: status);
+      await _load();
+      if (!mounted) return;
+      final sw = localeController.isSwahili;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            status == 'kept'
+                ? (sw ? 'Ahadi imefungwa (amelipa)' : 'Promise marked kept')
+                : (sw ? 'Ahadi imevunjwa' : 'Promise marked broken'),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   Future<void> _showCommLog(DebtorSummary d) async {
     final list = await _collection.recentCommunications(limit: 30);
     final mine = list.where((e) => e.partyId == d.customerId).toList();
@@ -607,16 +628,37 @@ class _DebtorsPageState extends State<DebtorsPage> {
                                   ? 'Kiasi hakijawekwa'
                                   : 'Amount not set'),
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.sms_outlined),
-                          tooltip: s.sms,
-                          onPressed: () {
-                            final match = _rows
-                                .where((d) => d.customerId == pr.customerId)
-                                .toList();
-                            if (match.isEmpty) return;
-                            _sms(match.first);
-                          },
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.sms_outlined),
+                              tooltip: s.sms,
+                              onPressed: () {
+                                final match = _rows
+                                    .where((d) => d.customerId == pr.customerId)
+                                    .toList();
+                                if (match.isEmpty) return;
+                                _sms(match.first);
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.check_circle_outline),
+                              tooltip: localeController.isSwahili
+                                  ? 'Amelipa'
+                                  : 'Kept',
+                              onPressed: () =>
+                                  _resolvePromise(pr, status: 'kept'),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.cancel_outlined),
+                              tooltip: localeController.isSwahili
+                                  ? 'Hakulipa'
+                                  : 'Broken',
+                              onPressed: () =>
+                                  _resolvePromise(pr, status: 'broken'),
+                            ),
+                          ],
                         ),
                         onTap: () {
                           final match = _rows
@@ -687,7 +729,8 @@ class _DebtorsPageState extends State<DebtorsPage> {
                       subtitle: Text(
                         [
                           Money.format(d.balance),
-                          if (d.isOverdue) (localeController.isSwahili ? 'Imechelewa' : 'Overdue'),
+                          if (d.isOverdue)
+                            (localeController.isSwahili ? 'Imechelewa' : 'Overdue'),
                           if (promise != null)
                             (localeController.isSwahili
                                 ? 'Ahadi ${promise.promisedDate.toIso8601String().substring(0, 10)}'
@@ -714,6 +757,12 @@ class _DebtorsPageState extends State<DebtorsPage> {
                               if (v == 'sms') await _sms(d);
                               if (v == 'copy') await _copyMessage(d);
                               if (v == 'promise') await _setPromise(d);
+                              if (v == 'kept' || v == 'broken') {
+                                final pr = _promises[d.customerId];
+                                if (pr != null) {
+                                  await _resolvePromise(pr, status: v);
+                                }
+                              }
                               if (v == 'log') await _showCommLog(d);
                               if (v == 'statement') await _openStatement(d);
                             },
@@ -725,6 +774,24 @@ class _DebtorsPageState extends State<DebtorsPage> {
                               PopupMenuItem(
                                   value: 'promise',
                                   child: Text(s.promiseToPay)),
+                              if (_promises[d.customerId] != null) ...[
+                                PopupMenuItem(
+                                  value: 'kept',
+                                  child: Text(
+                                    localeController.isSwahili
+                                        ? 'Ahadi imelipwa'
+                                        : 'Promise kept',
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'broken',
+                                  child: Text(
+                                    localeController.isSwahili
+                                        ? 'Ahadi imevunjwa'
+                                        : 'Promise broken',
+                                  ),
+                                ),
+                              ],
                               PopupMenuItem(
                                   value: 'log', child: Text(s.contactLog)),
                               PopupMenuItem(
