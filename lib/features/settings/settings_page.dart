@@ -7,6 +7,7 @@ import '../../services/theme_service.dart';
 import 'backup_settings_page.dart';
 import 'business_profile_page.dart';
 import 'security_settings_page.dart';
+import 'license_settings_page.dart';
 
 /// Hub for profile, security, backup, appearance, language.
 class SettingsPage extends StatefulWidget {
@@ -120,6 +121,20 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     )
                         .then((_) => _load());
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.verified_user_outlined),
+                  title: const Text('Mercate licence'),
+                  subtitle: const Text('Activate, check status or renew'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const LicenseSettingsPage(),
+                      ),
+                    );
                   },
                 ),
                 const Divider(height: 1),
