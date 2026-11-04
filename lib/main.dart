@@ -99,11 +99,20 @@ class _RootGateState extends State<_RootGate> {
   bool _loading = true;
   bool _needsOnboarding = false;
   bool _needsUnlock = false;
+  bool _startupFailed = false;
 
   @override
   void initState() {
     super.initState();
     _check();
+  }
+
+  Future<void> _retryStartup() async {
+    setState(() {
+      _startupFailed = false;
+      _loading = true;
+    });
+    await _check();
   }
 
   Future<void> _check() async {
@@ -133,9 +142,9 @@ class _RootGateState extends State<_RootGate> {
       if (!mounted) return;
       debugPrint('Startup gate check failed: $error');
       setState(() {
-        // Do not turn a transient licensing/identity error into onboarding.
-        _needsOnboarding = false;
-        _needsUnlock = false;
+        // Never send an existing customer through onboarding after a storage
+        // or identity error; show a retry path instead.
+        _startupFailed = true;
         _loading = false;
       });
     }
@@ -145,6 +154,27 @@ class _RootGateState extends State<_RootGate> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_startupFailed) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.warning_amber_rounded, size: 48),
+                const SizedBox(height: 12),
+                const Text('Mercate could not open your business data.'),
+                const SizedBox(height: 8),
+                const Text('Your records have not been changed. Check storage and retry.'),
+                const SizedBox(height: 16),
+                FilledButton(onPressed: _retryStartup, child: const Text('Retry')),
+              ],
+            ),
+          ),
+        ),
+      );
     }
     if (_needsOnboarding) {
       return OnboardingPage(
