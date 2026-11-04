@@ -33,17 +33,21 @@ Future<void> main() async {
     debugPrint('FlutterError: ${details.exceptionAsString()}');
   };
   PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('Uncaught: $error\n$stack');
+    debugPrint('Uncaught: $error\\n$stack');
     return true;
   };
   try {
     await AppDatabase.instance.metaDatabase;
     final profiles = BusinessProfileService.instance;
     if (await profiles.hasCompletedOnboarding()) {
+      // Backfill legacy installations without touching their business DBs.
+      await profiles.ensureBusinessId();
       final id = await profiles.getProfileId();
       await AppDatabase.instance.useProfile(id);
     }
-  } catch (_) {}
+  } catch (error, stack) {
+    debugPrint('Business identity bootstrap deferred: $error\\n$stack');
+  }
   await themeController.load();
   await localeController.load();
   try {
@@ -70,14 +74,8 @@ class MercateApp extends StatelessWidget {
         return MaterialApp(
           title: s.appName,
           debugShowCheckedModeBanner: false,
-          // Keep Material framework on English. AppStrings handles EN/SW UI copy.
-          // Setting locale to Locale('sw') without flutter_localizations breaks
-          // AppBar back icons, BottomNavigationBar, and many Material widgets
-          // (grey screens, missing icons).
           locale: const Locale('en'),
-          supportedLocales: const [
-            Locale('en'),
-          ],
+          supportedLocales: const [Locale('en')],
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
           themeMode: themeController.mode,
@@ -101,6 +99,7 @@ class _RootGateState extends State<_RootGate> {
   bool _loading = true;
   bool _needsOnboarding = false;
   bool _needsUnlock = false;
+  bool _startupFailed = false;
 
   @override
   void initState() {
@@ -108,11 +107,21 @@ class _RootGateState extends State<_RootGate> {
     _check();
   }
 
+  Future<void> _retryStartup() async {
+    setState(() {
+      _startupFailed = false;
+      _loading = true;
+    });
+    await _check();
+  }
+
   Future<void> _check() async {
     try {
       final done = await _profiles.hasCompletedOnboarding();
       if (!mounted) return;
       if (done) {
+        // Keep identity creation independent of PIN/biometric security.
+        await _profiles.ensureBusinessId();
         final id = await _profiles.getProfileId();
         await AppDatabase.instance.useProfile(id);
         final lockOn = await _security.isLockEnabled();
@@ -129,11 +138,13 @@ class _RootGateState extends State<_RootGate> {
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
+      debugPrint('Startup gate check failed: $error');
       setState(() {
-        _needsOnboarding = true;
-        _needsUnlock = false;
+        // Never send an existing customer through onboarding after a storage
+        // or identity error; show a retry path instead.
+        _startupFailed = true;
         _loading = false;
       });
     }
@@ -143,6 +154,27 @@ class _RootGateState extends State<_RootGate> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_startupFailed) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.warning_amber_rounded, size: 48),
+                const SizedBox(height: 12),
+                const Text('Mercate could not open your business data.'),
+                const SizedBox(height: 8),
+                const Text('Your records have not been changed. Check storage and retry.'),
+                const SizedBox(height: 16),
+                FilledButton(onPressed: _retryStartup, child: const Text('Retry')),
+              ],
+            ),
+          ),
+        ),
+      );
     }
     if (_needsOnboarding) {
       return OnboardingPage(
@@ -238,9 +270,9 @@ class _AppShellState extends State<AppShell> {
 
   void _openNotifications() {
     Navigator.of(context)
-        .push(
-      MaterialPageRoute<void>(builder: (_) => const NotificationsPage()),
-    )
+        .push(MaterialPageRoute<void>(
+          builder: (_) => const NotificationsPage(),
+        ))
         .then((_) async {
       final n = await _notifications.unreadCount();
       if (mounted) setState(() => _unread = n);
@@ -249,9 +281,7 @@ class _AppShellState extends State<AppShell> {
 
   void _openSettings() {
     Navigator.of(context)
-        .push(
-      MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
-    )
+        .push(MaterialPageRoute<void>(builder: (_) => const SettingsPage()))
         .then((_) => _bootstrap());
   }
 
@@ -340,10 +370,7 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final all = _items();
     final visible = all.where((i) => i.visible(_features)).toList();
-    if (selectedIndex >= visible.length) {
-      selectedIndex = 0;
-    }
-
+    if (selectedIndex >= visible.length) selectedIndex = 0;
     final currentId = visible.isEmpty ? 'home' : visible[selectedIndex].id;
     final showAssistantFab = currentId != 'pos';
     final s = localeController.s;
@@ -377,7 +404,7 @@ class _AppShellState extends State<AppShell> {
               onDestinationSelected: (index) {
                 setState(() => selectedIndex = index);
               },
-              destinations: [for (final i in visible) i.destination],
+              destinations: [for (final item in visible) item.destination],
             ),
     );
   }
