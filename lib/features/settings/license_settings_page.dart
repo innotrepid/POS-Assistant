@@ -103,18 +103,9 @@ class _LicenseSettingsPageState extends State<LicenseSettingsPage> {
     }
   }
 
-  String _formatRemaining(Duration duration) {
-    if (duration <= Duration.zero) return 'Expired';
-    final totalMinutes = (duration.inSeconds / 60).ceil();
-    final days = totalMinutes ~/ (24 * 60);
-    final hours = (totalMinutes % (24 * 60)) ~/ 60;
-    final minutes = totalMinutes % 60;
-    return [
-      if (days > 0) '${days}d',
-      if (hours > 0) '${hours}h',
-      '${minutes}m',
-    ].join(' ');
-  }
+  String _formatRemaining(Duration duration) =>
+      formatLicenseCountdown(duration);
+
 
   Future<void> _copyBusinessId() async {
     final id = _businessId;
