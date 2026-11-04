@@ -29,7 +29,7 @@ dependencies:
   innotrepid_security:
     git:
       url: https://github.com/innotrepid/Innotrepid-Security.git
-      ref: 7bc1f35a4eae537c302836ee147723de41dcad37
+      ref: 45d7235a34b1a6f9498fc41903a14037e960e408
       path: packages/innotrepid_security
 
 dev_dependencies:
