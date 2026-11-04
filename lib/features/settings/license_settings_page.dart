@@ -182,7 +182,7 @@ class _LicenseSettingsPageState extends State<LicenseSettingsPage> {
                           'Device allowance',
                           license.maxDevices == null
                               ? 'Set by your licence issuer'
-                              : 'Up to ${license.maxDevices} devices',
+                              : '${license.maxDevices} device limit (enrolment is a separate step)',
                         ),
                       ],
                     ],
@@ -271,7 +271,7 @@ class _LicenseSettingsPageState extends State<LicenseSettingsPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Your business records are stored separately from this licence. Entering a renewal replaces the previous code; it does not delete or alter sales, stock, customers or backups.',
+                  'Your business records are stored separately from this licence. Entering a renewal replaces the previous code; it does not delete or alter sales, stock, customers or backups. Device limits are carried by the signed code; multi-device enrolment and enforcement will be enabled in a later phase.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
