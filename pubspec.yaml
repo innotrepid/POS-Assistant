@@ -9,12 +9,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
   cupertino_icons: ^1.0.8
   sqflite: ^2.4.2
   path: ^1.9.1
   path_provider: ^2.1.5
-  # excel 4.x requires archive ^3.6; keep in that range for zip backups too
   archive: ^3.6.1
   share_plus: ^10.1.4
   permission_handler: ^11.3.1
@@ -24,6 +22,7 @@ dependencies:
   printing: ^5.14.2
   local_auth: ^2.3.0
   crypto: ^3.0.6
+  cryptography: ^2.7.0
   url_launcher: ^6.3.1
   flutter_local_notifications: ^18.0.1
   excel: ^4.0.6
