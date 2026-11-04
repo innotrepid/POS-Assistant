@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:innotrepid_security/innotrepid_security.dart';
+
 class MercateLicense {
   const MercateLicense({
     required this.schemaVersion,
@@ -20,6 +22,19 @@ class MercateLicense {
   final DateTime expiresAt;
   final int graceDays;
   final int? maxDevices;
+
+  factory MercateLicense.fromClaims(LicenseClaims claims) {
+    return MercateLicense(
+      schemaVersion: claims.schemaVersion,
+      product: claims.product,
+      businessId: claims.businessId,
+      licenseId: claims.licenseId,
+      issuedAt: claims.issuedAt,
+      expiresAt: claims.expiresAt,
+      graceDays: claims.graceDays,
+      maxDevices: claims.maxDevices,
+    );
+  }
 
   factory MercateLicense.fromJson(Map<String, dynamic> json) {
     final schemaVersion = json['schemaVersion'];

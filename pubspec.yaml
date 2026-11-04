@@ -26,6 +26,11 @@ dependencies:
   url_launcher: ^6.3.1
   flutter_local_notifications: ^18.0.1
   excel: ^4.0.6
+  innotrepid_security:
+    git:
+      url: https://github.com/innotrepid/Innotrepid-Security.git
+      ref: 45d7235a34b1a6f9498fc41903a14037e960e408
+      path: packages/innotrepid_security
 
 dev_dependencies:
   flutter_test:
