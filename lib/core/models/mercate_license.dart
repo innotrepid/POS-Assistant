@@ -87,3 +87,18 @@ class LicenseEvaluation {
   bool get permitsLicensedOperation =>
       state == LicenseState.active || state == LicenseState.gracePeriod;
 }
+
+/// Formats a signed-expiry countdown for display only. It never changes the
+/// authoritative expiry timestamp or licence evaluation.
+String formatLicenseCountdown(Duration remaining) {
+  if (remaining <= Duration.zero) return 'Expired';
+  final totalMinutes = (remaining.inSeconds / 60).ceil();
+  final days = totalMinutes ~/ (24 * 60);
+  final hours = (totalMinutes % (24 * 60)) ~/ 60;
+  final minutes = totalMinutes % 60;
+  return [
+    if (days > 0) '${days}d',
+    if (hours > 0) '${hours}h',
+    '${minutes}m',
+  ].join(' ');
+}
