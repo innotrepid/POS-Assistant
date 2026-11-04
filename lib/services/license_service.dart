@@ -114,6 +114,14 @@ class LicenseService {
       );
     }
 
+    if (current.isBefore(license.issuedAt)) {
+      return LicenseEvaluation(
+        state: LicenseState.notYetValid,
+        license: license,
+        message: 'This licence is not valid until its issue time.',
+      );
+    }
+
     if (!current.isAfter(license.expiresAt)) {
       return LicenseEvaluation(state: LicenseState.active, license: license);
     }
