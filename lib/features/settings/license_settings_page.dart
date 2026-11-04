@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -21,15 +23,22 @@ class _LicenseSettingsPageState extends State<LicenseSettingsPage> {
   String? _businessId;
   bool _loading = true;
   bool _activating = false;
+  DateTime _now = DateTime.now().toUtc();
+  Timer? _countdownTimer;
 
   @override
   void initState() {
     super.initState();
     _refresh();
+    _countdownTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _tickCountdown(),
+    );
   }
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _tokenController.dispose();
     super.dispose();
   }
@@ -43,6 +52,7 @@ class _LicenseSettingsPageState extends State<LicenseSettingsPage> {
       setState(() {
         _businessId = businessId;
         _evaluation = evaluation;
+        _now = DateTime.now().toUtc();
         _loading = false;
       });
     } catch (error) {
@@ -55,6 +65,55 @@ class _LicenseSettingsPageState extends State<LicenseSettingsPage> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _tickCountdown() async {
+    try {
+      final evaluation = await _licenseService.evaluate();
+      if (!mounted) return;
+      setState(() {
+        _now = DateTime.now().toUtc();
+        _evaluation = evaluation;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _now = DateTime.now().toUtc());
+    }
+  }
+
+  String _remainingLabel(LicenseEvaluation evaluation) {
+    final license = evaluation.license;
+    if (license == null) return 'Not available';
+    switch (evaluation.state) {
+      case LicenseState.active:
+        return _formatRemaining(license.expiresAt.difference(_now));
+      case LicenseState.gracePeriod:
+        final graceEnds =
+            license.expiresAt.add(Duration(days: license.graceDays));
+        return 'Grace: ${_formatRemaining(graceEnds.difference(_now))}';
+      case LicenseState.notYetValid:
+        return 'Starts in ${_formatRemaining(license.issuedAt.difference(_now))}';
+      case LicenseState.expired:
+        return 'Expired';
+      case LicenseState.clockRollback:
+        return 'Unavailable — check device clock';
+      case LicenseState.invalid:
+      case LicenseState.unactivated:
+        return 'Not available';
+    }
+  }
+
+  String _formatRemaining(Duration duration) {
+    if (duration <= Duration.zero) return 'Expired';
+    final totalMinutes = (duration.inSeconds / 60).ceil();
+    final days = totalMinutes ~/ (24 * 60);
+    final hours = (totalMinutes % (24 * 60)) ~/ 60;
+    final minutes = totalMinutes % 60;
+    return [
+      if (days > 0) '${days}d',
+      if (hours > 0) '${hours}h',
+      '${minutes}m',
+    ].join(' ');
   }
 
   Future<void> _copyBusinessId() async {
@@ -177,6 +236,7 @@ class _LicenseSettingsPageState extends State<LicenseSettingsPage> {
                         const Divider(height: 24),
                         _detail('Licence ID', license.licenseId),
                         _detail('Valid until', _date(license.expiresAt)),
+                        _detail('Time remaining', _remainingLabel(evaluation!)),
                         _detail('Grace period', '${license.graceDays} days'),
                         _detail(
                           'Device allowance',
