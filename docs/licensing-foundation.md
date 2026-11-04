@@ -11,7 +11,11 @@ suppliers, or backup files.
 The ID is retained when shop details or the active business profile change.
 Because the meta database is included in Mercate backups, the identity is
 preserved by existing backup/restore flows. A restored backup therefore
-represents the same licensed business.
+represents the same licensed business. A clean installation on another phone
+will generate a different ID until it is linked to the existing business; for
+now, restoring that business's backup is the supported way to carry its ID to
+a second device. A dedicated business-link/device-enrolment flow belongs in
+Phase 2 so it cannot accidentally merge unrelated local records.
 
 Existing customers are **not automatically licensed**. They remain unactivated
 until the operator issues and enters a licence code.
@@ -55,7 +59,9 @@ licensing enforcement is wired into sales or other operations in this phase.
 
 The signed `maxDevices` claim carries the custom per-business device limit.
 A missing value means unlimited. Device registration, transfer and enforcement
-are later integration work; this phase defines the signed claim only.
+are later integration work; this phase defines the signed claim only. Until
+device enrolment exists, the signed limit is data carried by the licence, not
+an enforced count of registered phones.
 
 The signed `graceDays` value lets the issuer select the grace period per
 business. The evaluator distinguishes active, grace-period, expired, invalid,
