@@ -25,7 +25,7 @@ class MercateLicense {
     final schemaVersion = json['schemaVersion'];
     final graceDays = json['graceDays'] ?? 0;
     final maxDevices = json['maxDevices'];
-    if (schemaVersion != 1 ||
+    if (schemaVersion is! int || schemaVersion != 1 ||
         json['product'] != 'mercate' ||
         json['businessId'] is! String ||
         (json['businessId'] as String).isEmpty ||
@@ -62,7 +62,7 @@ class MercateLicense {
   }
 }
 
-enum LicenseState { unactivated, active, gracePeriod, expired, invalid, clockRollback }
+enum LicenseState { unactivated, notYetValid, active, gracePeriod, expired, invalid, clockRollback }
 
 class LicenseEvaluation {
   const LicenseEvaluation({required this.state, this.license, this.message});
