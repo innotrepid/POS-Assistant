@@ -1,6 +1,4 @@
-import 'dart:convert';
-
-import 'package:cryptography/cryptography.dart';
+import 'package:innotrepid_security/innotrepid_security.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../core/database/app_database.dart';
@@ -25,7 +23,6 @@ class LicenseService {
   final AppDatabase _database;
   final BusinessProfileService _profiles;
   final String _publicKeyBase64;
-  final Ed25519 _ed25519 = Ed25519();
 
   static final LicenseService instance = LicenseService();
 
@@ -136,23 +133,13 @@ class LicenseService {
     if (_publicKeyBase64.isEmpty) {
       throw StateError('Licence verification key is not configured in this build.');
     }
-    final parts = token.trim().split('.');
-    if (parts.length != 2) throw const FormatException('Malformed licence token.');
 
-    final payloadBytes = _decodeBase64Url(parts[0]);
-    final signatureBytes = _decodeBase64Url(parts[1]);
-    final publicKeyBytes = _decodeBase64Url(_publicKeyBase64);
-    if (publicKeyBytes.length != 32 || signatureBytes.length != 64) {
-      throw const FormatException('Invalid Ed25519 key or signature length.');
-    }
+    final claims = await Ed25519LicenseVerifier(
+      publicKeyBase64Url: _publicKeyBase64,
+      expectedProduct: 'mercate',
+    ).verify(token);
 
-    final publicKey = SimplePublicKey(publicKeyBytes, type: KeyPairType.ed25519);
-    final signature = Signature(signatureBytes, publicKey: publicKey);
-    final valid = await _ed25519.verify(payloadBytes, signature: signature);
-    if (!valid) throw const FormatException('Licence signature is invalid.');
-    return MercateLicense.decodePayload(payloadBytes);
+    return MercateLicense.fromClaims(claims);
   }
 
-  List<int> _decodeBase64Url(String value) =>
-      base64Url.decode(base64Url.normalize(value));
 }
