@@ -64,8 +64,8 @@ device enrolment exists, the signed limit is data carried by the licence, not
 an enforced count of registered phones.
 
 The signed `graceDays` value lets the issuer select the grace period per
-business. The evaluator distinguishes active, grace-period, expired, invalid,
-unactivated and clock-rollback states.
+business. The evaluator distinguishes not-yet-valid, active, grace-period,
+expired, invalid, unactivated and clock-rollback states.
 
 The last trusted local UTC time is stored in the shared meta database. This
 detects a significant backwards clock change on the same installation, but
