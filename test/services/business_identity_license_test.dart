@@ -16,11 +16,8 @@ void main() {
     final database = AppDatabase.memory();
     addTearDown(database.close);
     final meta = await database.metaDatabase;
-
-    // Simulate a pre-licensing install: onboarding and business data already
-    // exist, but there is no business_id metadata key yet.
     await meta.insert('settings', {'key': 'onboarding_done', 'value': '1'});
-    await meta.insert('settings', {'key': 'business_profile', 'value': 'duka'});
+    await meta.insert('settings', {'key': 'business_profile', 'value': 'mamaMboga'});
     await meta.insert('settings', {'key': 'business_name', 'value': 'Amina Shop'});
     final businessDb = await database.database;
     await businessDb.insert('customers', {
@@ -42,22 +39,22 @@ void main() {
     expect(await profiles.getBusinessName(), 'Amina Shop');
   });
 
-  test('new onboarding creates identity and profile changes preserve it', () async {
+  test('new onboarding creates identity that survives ordinary settings changes', () async {
     final database = AppDatabase.memory();
     addTearDown(database.close);
     final profiles = BusinessProfileService(database: database);
 
     await profiles.completeOnboarding(
-      profileId: BusinessProfileId.duka,
+      profileId: BusinessProfileId.mamaMboga,
       shopName: 'Test Shop',
     );
     final originalId = await profiles.ensureBusinessId();
 
-    await profiles.setProfile(BusinessProfileId.kiosk);
+    await profiles.setBusinessName('Test Shop Updated');
     expect(await profiles.ensureBusinessId(), originalId);
   });
 
-  test('licence claims accept a valid custom device and grace policy', () {
+  test('licence claims accept custom device and grace policies', () {
     final license = MercateLicense.fromJson({
       'schemaVersion': 1,
       'product': 'mercate',
@@ -74,7 +71,7 @@ void main() {
     expect(license.maxDevices, 4);
   });
 
-  test('licence claims reject invalid device limits and product IDs', () {
+  test('licence claims reject unsupported product and invalid device limits', () {
     expect(
       () => MercateLicense.fromJson({
         'schemaVersion': 1,
